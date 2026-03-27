@@ -1,5 +1,5 @@
 [build-system]
-requires = ["poetry-core>=2.0.0"]
+requires = ["poetry-core>=2.0.0", "cmake>=3.14"]
 build-backend = "poetry.core.masonry.api"
 
 [project]
@@ -21,14 +21,21 @@ packages = [
     { include = "ssw_aligner" },
 ]
 include = [
+    # Wheel: bundle the compiled shared library
     { path = "ssw_aligner/libssw_aligner.so", format = "wheel" },
+    # Sdist: include all C++ sources needed for CMake build
+    { path = "CMakeLists.txt", format = "sdist" },
+    { path = "src/**/*", format = "sdist" },
+    { path = "lib/**/*", format = "sdist" },
+    { path = "generated/**/*", format = "sdist" },
+    { path = "simde-sse2.h", format = "sdist" },
 ]
 exclude = [
     "ssw_aligner/libssw_aligner.so",  # generated — not tracked in git
 ]
 
 [tool.poetry.build]
-script = "build.py"
+script = "scripts/build_ext.py"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
