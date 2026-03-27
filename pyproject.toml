@@ -1,6 +1,3 @@
-[build-system]
-requires = ["poetry-core>=2.0.0", "cmake>=3.14"]
-build-backend = "poetry.core.masonry.api"
 
 [project]
 name = "ssw-aligner"
@@ -8,18 +5,18 @@ version = "0.2.0"
 description = "SIMD-accelerated Smith-Waterman local aligner (MMseqs2 engine, pure-ctypes Python API)"
 readme = "README.md"
 license = "GPL-3.0-only"
-requires-python = ">=3.9"
-dependencies = [
-    "numpy>=1.17.0",
-]
+requires-python = ">=3.10,<3.13"
+dependencies = ["numpy>=1.17.0"]
 
-[project.optional-dependencies]
-dev = ["pytest", "blosum", "scikit-bio==0.6.2"]
+[dependency-groups]
+dev = ["pytest (>=9.0.2,<10.0.0)", "blosum (>=2.2.0,<3.0.0)", "scikit-bio==0.6.2"]
+
+[build-system]
+requires = ["poetry-core>=2.0.0", "cmake>=3.14"]
+build-backend = "poetry.core.masonry.api"
 
 [tool.poetry]
-packages = [
-    { include = "ssw_aligner" },
-]
+packages = [{ include = "ssw_aligner" }]
 include = [
     # Wheel: bundle the compiled shared library
     { path = "ssw_aligner/libssw_aligner.so", format = "wheel" },
@@ -31,7 +28,7 @@ include = [
     { path = "simde-sse2.h", format = "sdist" },
 ]
 exclude = [
-    "ssw_aligner/libssw_aligner.so",  # generated — not tracked in git
+    "ssw_aligner/libssw_aligner.so", # generated — not tracked in git
 ]
 
 [tool.poetry.build]
@@ -39,3 +36,4 @@ script = "scripts/build_ext.py"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
