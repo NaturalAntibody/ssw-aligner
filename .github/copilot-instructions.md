@@ -15,8 +15,8 @@ around the original Mengyao Zhao SSW C library (Boston College, 2010). However:
 - scikit-bio may deprecate its SSW module (see
   [scikit-bio#1814](https://github.com/scikit-bio/scikit-bio/issues/1814)).
 - The original C library lacks features present in MMseqs2's engine:
-  profile (PSSM) alignment, block-aligner fallback for large scores,
-  AVX2 support, and built-in Gumbel statistics (ALP library).
+  profile (PSSM) alignment, AVX2 support, and built-in Gumbel statistics
+  (ALP library).
 - scikit-bio's SSW is compiled via Cython and tightly coupled to NumPy ABI,
   making cross-platform builds harder.
 
@@ -60,9 +60,15 @@ The C++ alignment engine under `src/` is extracted from
   `-DHAVE_AVX2=ON` in CMake, which defines the `AVX2` macro and switches
   SIMD lane widths from 128-bit to 256-bit.
 - When byte-width scores overflow (>255), the engine falls back to
-  16-bit word mode. When word-mode scores overflow, it falls back to
-  the block-aligner (a Rust WASM-compiled SIMD aligner under
-  `lib/block-aligner/c/`).
+  16-bit word mode.
+- **Block-aligner was removed** from this project. The upstream MMseqs2
+  engine includes a block-aligner (Rust WASM SIMD) fallback for scores
+  that overflow 16-bit word mode. In ssw-aligner this was a stub that
+  always returned failure, causing a fallback to standard SW traceback
+  on every word-mode alignment — adding overhead and warning noise.
+  The block-aligner code, `struct s_block`, and the
+  `alignStartPosBacktraceBlock` method have all been deleted. The engine
+  now always uses `alignStartPosBacktrace` directly for traceback.
 - Gumbel statistics (λ, K for E-values) are computed via the ALP library
   under `lib/alp/`.
 - MMseqs2 uses `alphabetSize = 21` for amino acids (20 AAs + X sentinel).
@@ -110,20 +116,26 @@ ssw-aligner/
 │
 ├── lib/                      # Third-party libraries
 │   ├── alp/                  # ALP — Gumbel parameter estimation (public domain)
-│   ├── block-aligner/c/      # Block-aligner — fallback for large scores
 │   ├── simd/                 # SIMD abstraction header
 │   ├── simde/                # SIMDe — portable SSE2/AVX intrinsics
 │   └── fmt/                  # {fmt} formatting library
 │
+├── scripts/
+│   └── build_ext.py          # Build script invoked by poetry-core (CMake)
+│
 ├── tests/
-│   └── test_regression.py    # 41 regression tests (pytest)
+│   ├── test_regression.py    # 41 regression tests vs scikit-bio (pytest)
+│   ├── test_mmseqs_freqs.py  # 11 unit tests for MMseqs2 AA freqs & Gumbel
+│   ├── test_install.py       # 14 integration tests (wheel + sdist install)
+│   ├── test_performance.py   # Throughput benchmark vs scikit-bio
+│   └── smoke_test.py         # Standalone smoke test (copied into clean venvs)
 │
 ├── examples/
 │   ├── basic_usage.py        # Sequence-sequence alignment examples
 │   └── profile_alignment.py  # Profile (PSSM) alignment examples
 │
 ├── CMakeLists.txt            # Build system for libssw_aligner.so
-├── pyproject.toml            # Python packaging
+├── pyproject.toml            # Python packaging (poetry-core backend)
 └── README.md
 ```
 
@@ -195,6 +207,28 @@ cmake --build build -j$(nproc)
 Output: `build/libssw_aligner.so` — loaded automatically by the Python
 wrapper from the `build/` directory relative to the package.
 
+**Important:** After rebuilding, copy the `.so` to the package directory
+so the editable install picks it up:
+
+```bash
+cp build/libssw_aligner.so ssw_aligner/libssw_aligner.so
+```
+
+The wrapper searches for the library in this order:
+1. `ssw_aligner/libssw_aligner.so` (package directory)
+2. `build/libssw_aligner.so` (build directory)
+
+### Building with Poetry
+
+```bash
+poetry build          # produces wheel + sdist in dist/
+pip install dist/ssw_aligner-*.whl
+```
+
+The build system uses [poetry-core](https://python-poetry.org/) as the
+PEP 517 backend. A build script (`scripts/build_ext.py`) runs CMake
+automatically during `poetry build` / `pip install`.
+
 ---
 
 ## Testing
@@ -204,9 +238,63 @@ pip install -e ".[dev]"    # installs pytest + scikit-bio==0.6.2
 pytest tests/ -q
 ```
 
-The 41 regression tests compare ssw-aligner results against scikit-bio's
-`StripedSmithWaterman` for nucleotide and protein alignments with various
-gap penalties, masking options, and edge cases.
+### Test suites
+
+| File | Tests | Purpose |
+|---|---|---|
+| `test_regression.py` | 41 | Compare ssw-aligner vs scikit-bio for nucleotide/protein alignments with various gap penalties, masking, edge cases |
+| `test_mmseqs_freqs.py` | 11 | Unit tests for MMseqs2 AA background frequencies, Gumbel parameter computation, bit-scores, E-values |
+| `test_install.py` | 14 | Integration tests: build wheel & sdist in fresh venvs, run `smoke_test.py` |
+| `test_performance.py` | 3 | Throughput benchmark vs scikit-bio (requires `riot_na` data in sibling directory) |
+
+### Running the performance benchmark
+
+```bash
+pytest tests/test_performance.py -v -s
+```
+
+Requires the `riot_na` repository cloned as a sibling directory (for NGS
+query sequences and V-gene target databases). The benchmark aligns 1 000
+amino-acid queries × 327 human V-gene references using BLOSUM62/11/1
+parameters.
+
+---
+
+## Benchmark results
+
+Protein alignment throughput (1 000 queries × 327 V-genes, BLOSUM62/11/1):
+
+| Engine | Alignments/s |
+|---|---|
+| **ssw-aligner** | ~27 000 |
+| scikit-bio 0.6.2 | ~39 000 |
+
+Score agreement: **93.1 %** (30 439 / 32 700 pairs match exactly).
+
+The 6.9 % score divergence occurs on alignments where byte-mode scores
+overflow (>255) and the word-mode fallback engages. The two engines use
+different traceback implementations for word-mode, producing different
+start positions and CIGARs. The optimal alignment score itself is always
+correct; only traceback details differ.
+
+### Performance gap analysis
+
+ssw-aligner is currently ~1.4× slower than scikit-bio. Contributing factors:
+
+1. **Engine complexity** — MMseqs2's SW engine supports profile alignment,
+   composition bias correction, and coverage filtering. These code paths
+   add overhead even when unused. scikit-bio uses the simpler Mengyao Zhao
+   SSW library optimized purely for sequence-sequence alignment.
+2. **ctypes call overhead** — each alignment requires a Python→C round-trip
+   via ctypes. scikit-bio uses Cython with direct C function calls.
+3. **Memory allocation** — MMseqs2's engine allocates/manages more internal
+   structures (reverse profiles, word-mode profiles, composition bias
+   arrays) per query initialization.
+
+Potential optimizations (not yet implemented):
+- AVX2 build (`-DHAVE_AVX2=ON`) — should roughly double SIMD throughput
+- Batch alignment API — amortize ctypes call overhead across multiple targets
+- Stripping unused code paths from the engine (coverage checks, etc.)
 
 ---
 
@@ -244,3 +332,28 @@ When adding a new precomputed config:
 - `DBTYPE_HMM_PROFILE = 2` (in `Parameters.h`) — triggers profile alignment
 - `DBTYPE_AMINO_ACIDS = 0` (in `Parameters.h`)
 - Internal amino acid alphabet size for the engine: 21 (20 + X sentinel)
+
+---
+
+## Known issues
+
+1. **Stale `.so` after rebuild** — the Python wrapper loads
+   `ssw_aligner/libssw_aligner.so` first. After running `cmake --build`,
+   the new library lands in `build/`. You must copy it manually:
+   ```bash
+   cp build/libssw_aligner.so ssw_aligner/libssw_aligner.so
+   ```
+   Forgetting this step means the old binary is still loaded at runtime.
+
+2. **~1.4× slower than scikit-bio** — see [Benchmark results](#benchmark-results)
+   for root causes and planned optimizations.
+
+3. **6.9 % score divergence on word-mode alignments** — when byte-mode
+   scores overflow (>255), the engine falls back to 16-bit word mode.
+   The traceback implementation differs from scikit-bio's Mengyao Zhao
+   SSW library, producing different start positions and CIGARs on those
+   alignments. The optimal score itself is always correct.
+
+4. **No Windows or macOS CI** — the build and tests are only validated on
+   Linux. CMake and SIMDe should support other platforms, but this is
+   untested.
