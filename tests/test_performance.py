@@ -154,6 +154,6 @@ class TestPerformance:
 
         mismatch_pct = 100.0 * mismatches / total if total else 0
         print(f"\n  Score agreement: {total - mismatches}/{total} ({100 - mismatch_pct:.1f}%)")
-        # The MMseqs2 engine handles byte-overflow differently (block-aligner
-        # fallback) so some high-scoring BLOSUM62 pairs diverge.
+        # When byte-mode scores overflow (>255) the word-mode fallback
+        # uses a different traceback than scikit-bio, so some pairs diverge.
         assert mismatch_pct < 10, f"Too many score mismatches: {mismatch_pct:.1f}%"

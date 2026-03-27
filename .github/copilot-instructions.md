@@ -279,22 +279,79 @@ correct; only traceback details differ.
 
 ### Performance gap analysis
 
-ssw-aligner is currently ~1.4× slower than scikit-bio. Contributing factors:
+ssw-aligner is currently ~1.4× slower than scikit-bio. The inner SIMD
+DP kernel is structurally identical between the two engines — the
+slowdown comes entirely from surrounding overhead.
 
-1. **Engine complexity** — MMseqs2's SW engine supports profile alignment,
-   composition bias correction, and coverage filtering. These code paths
-   add overhead even when unused. scikit-bio uses the simpler Mengyao Zhao
-   SSW library optimized purely for sequence-sequence alignment.
-2. **ctypes call overhead** — each alignment requires a Python→C round-trip
-   via ctypes. scikit-bio uses Cython with direct C function calls.
-3. **Memory allocation** — MMseqs2's engine allocates/manages more internal
-   structures (reverse profiles, word-mode profiles, composition bias
-   arrays) per query initialization.
+**Estimated breakdown of the ~1.4× slowdown:**
+- ~40–50 % from **ctypes / Python overhead**
+- ~30–40 % from **init overhead** (surplus allocations, unused profiles)
+- ~10–20 % from **per-alignment dead code** (unused backtrace string,
+  coverage computation)
 
-Potential optimizations (not yet implemented):
-- AVX2 build (`-DHAVE_AVX2=ON`) — should roughly double SIMD throughput
-- Batch alignment API — amortize ctypes call overhead across multiple targets
-- Stripping unused code paths from the engine (coverage checks, etc.)
+#### 1. ctypes vs Cython call overhead (~40–50 %)
+
+scikit-bio's Cython wrapper makes **direct C function calls** through
+`cdef extern` — zero marshalling cost. ssw-aligner uses ctypes, which
+incurs per-call overhead:
+
+| Operation | scikit-bio (Cython) | ssw-aligner (ctypes) |
+|---|---|---|
+| Function call dispatch | ~5 ns (direct C) | ~200–500 ns (libffi) |
+| Argument marshalling | 0 ns (compile-time cast) | ~50–100 ns per arg (boxing) |
+| Sequence encoding | Cython loop | Pure Python `for i, ch in enumerate(…)` loop |
+| Cigar decoding | Lazy (deferred to property access) | Eager (decoded in `AlignmentStructure.__init__`) |
+
+The `__call__` path wraps **9 arguments** through `ctypes.c_*()` boxing
+on every alignment. `_encode_sequence()` is a pure Python character loop
+on every target. `AlignmentStructure.__init__` eagerly decodes the full
+CIGAR (scikit-bio defers this to a memoized property).
+
+#### 2. Init overhead: ~30 allocations vs 3 (~30–40 %)
+
+| | scikit-bio | ssw-aligner (MMseqs2) |
+|---|---|---|
+| Heap allocations in init | 2–3 | ~30+ |
+| Profile arrays built | 2 (byte + word) | 7 (byte/word/int32 × fwd, plus linear word/int) |
+| Extra structures | — | `SimpleBaseMatrix`, `Sequence`, composition bias arrays, reverse query, reverse matrix |
+
+The MMseqs2 `SmithWaterman` constructor (`StripedSmithWaterman.cpp`
+L646–L705) allocates ~26 objects: `simd_data`, 4 DP vectors, 6 profile
+arrays (byte/word/int32 × fwd+rev), 2 sequence copies, 2 composition
+bias arrays, 2 linear profiles, 2 matrix copies, temp buffers, and
+per-column scoring arrays. Most of these are **never used** in basic
+sequence-sequence alignment (int32 profiles, linear profiles, composition
+bias, reverse profiles are all dead weight).
+
+The `createQueryProfile` loop also includes an extra memory load + add
+for the zeroed composition bias array on every profile element, even when
+bias correction is disabled.
+
+#### 3. Per-alignment dead code (~10–20 %)
+
+Code that runs on **every** alignment but produces unused results:
+
+- **`computerBacktrace()`** — iterates the entire CIGAR building a
+  `std::string` by appending "M"/"I"/"D" one character at a time,
+  involving heap allocation and copying. The string is populated in
+  `ssw_align_private` and immediately discarded in `ssw_api.cpp`.
+- **`computeCov()` × 2** — computes query and target coverage ratios
+  (always called, though `covThr=0` makes the subsequent
+  `hasCoverage()` check trivially pass).
+- **E-value null-pointer check** — `evaluer` is always `nullptr` in our
+  API, but the branch exists.
+
+### Potential optimizations (not yet implemented)
+
+| Optimization | Expected impact | Effort |
+|---|---|---|
+| AVX2 build (`-DHAVE_AVX2=ON`) | ~2× SIMD throughput | Low (cmake flag) |
+| Batch alignment API | Amortize ctypes overhead across N targets | Medium |
+| Strip `computerBacktrace()` call | Eliminate per-alignment string alloc | Low |
+| Strip `computeCov()` + `hasCoverage()` | Remove per-alignment dead code | Low |
+| Remove int32 + linear profile building | Faster init, less memory | Low |
+| Remove composition bias array loads | Fewer memory accesses in profile build | Low |
+| Cython wrapper (replace ctypes) | Eliminate ~40–50 % of gap | High |
 
 ---
 
