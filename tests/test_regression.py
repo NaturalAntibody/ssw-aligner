@@ -8,7 +8,7 @@ protein alignments, covering all the usage patterns found in riot_na.
 import pytest
 import blosum  # type: ignore
 
-from ssw_aligner import AlignmentStructure, StripedSmithWaterman
+from ssw_aligner import StripedSmithWaterman
 
 
 # ---------------------------------------------------------------------------
