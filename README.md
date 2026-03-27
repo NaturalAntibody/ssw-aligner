@@ -21,28 +21,50 @@ and exposes a pure-Python (ctypes) API that is a drop-in replacement for
   link against NumPy ABI.
 - **Drop-in replacement** for `skbio.alignment.StripedSmithWaterman`.
 
-## Building
-
-The C++ library must be compiled before use:
-
-```bash
-# Configure and build (default: SSE2, Release)
-cmake -B build -DCMAKE_BUILD_TYPE=Release
-cmake --build build -j$(nproc)
-
-# Optional: enable AVX2 for ~2× throughput on supported CPUs
-cmake -B build -DCMAKE_BUILD_TYPE=Release -DHAVE_AVX2=ON
-cmake --build build -j$(nproc)
-```
-
-This produces `build/libssw_aligner.so`, which the Python wrapper locates
-automatically.
-
 ## Installation
 
+### From wheel (recommended)
+
 ```bash
-pip install .          # installs the Python package (numpy required)
-pip install blosum     # optional: needed for protein substitution matrices
+pip install ssw-aligner
+```
+
+Pre-built wheels include the compiled `libssw_aligner.so` — no C++ toolchain
+required.
+
+### From source (sdist)
+
+When installing from source, CMake ≥ 3.14 and a C++17 compiler are required.
+CMake is declared as a build dependency and will be fetched automatically
+by pip:
+
+```bash
+pip install ssw-aligner --no-binary ssw-aligner
+```
+
+### Development setup
+
+```bash
+git clone https://github.com/NaturalAntibody/ssw-aligner.git
+cd ssw-aligner
+
+# Poetry (recommended)
+poetry install
+poetry build          # produces wheel + sdist in dist/
+
+# Or plain pip (editable)
+pip install -e ".[dev]"
+```
+
+The build system uses [poetry-core](https://python-poetry.org/) as the
+PEP 517 backend.  A build script (`scripts/build_ext.py`) compiles the
+C++ library via CMake automatically during `poetry build` / `pip install`.
+
+To enable AVX2 for ~2× throughput on supported CPUs, set the environment
+variable before building:
+
+```bash
+CMAKE_ARGS="-DHAVE_AVX2=ON" poetry build
 ```
 
 ## Quick start
