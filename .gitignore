@@ -25,7 +25,6 @@ Thumbs.db
 
 # Project-specific
 *.pdf
-test_mmseqs_freqs.py
 
 ssw_aligner.egg-info/*
 **/__pycache__/
