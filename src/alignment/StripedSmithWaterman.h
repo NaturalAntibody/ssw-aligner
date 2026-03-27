@@ -46,7 +46,6 @@
 #include "EvalueComputation.h"
 
 struct s_profile;
-struct s_block;
 struct simd_data;
 
 typedef struct {
@@ -157,15 +156,6 @@ public:
         const float covThr,
         const float correlationScoreWeight,
         const int32_t maskLen);
-
-    template <unsigned int type>
-    s_align alignStartPosBacktraceBlock(
-        const unsigned char *db_sequence,
-        int32_t db_length,
-        const uint8_t gap_open,
-        const uint8_t gap_extend,
-        std::string & backtrace,
-        s_align r);
 
     s_align  ssw_align (const unsigned char *db_num_sequence,
                         int32_t db_length,
@@ -286,7 +276,6 @@ private:
                                     int32_t band_width, const int8_t *mat, const int32_t qry_n);
 
     s_profile* profile;
-    s_block* block;
 
     float *tmp_composition_bias;
     int8_t * scorePerCol;

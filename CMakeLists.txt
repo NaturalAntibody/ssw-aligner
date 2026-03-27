@@ -44,7 +44,6 @@ set(INC_DIRS
     ${CMAKE_CURRENT_SOURCE_DIR}/lib/simd
     ${CMAKE_CURRENT_SOURCE_DIR}/lib/simde
     ${CMAKE_CURRENT_SOURCE_DIR}/lib/fmt
-    ${CMAKE_CURRENT_SOURCE_DIR}/lib/block-aligner/c
     ${CMAKE_CURRENT_SOURCE_DIR}/generated
 )
 
@@ -92,18 +91,12 @@ set(API_SRCS
     src/api/ssw_api.cpp
 )
 
-# Block-aligner stub (C)
-set(BLOCK_ALIGNER_SRCS
-    lib/block-aligner/c/block_aligner_stub.c
-)
-
 # All sources
 set(ALL_SRCS
     ${ALIGNMENT_SRCS}
     ${COMMONS_SRCS}
     ${API_SRCS}
     ${ALP_SRCS}
-    ${BLOCK_ALIGNER_SRCS}
 )
 
 # Exclude MPI file if not using MPI

@@ -30,10 +30,7 @@
 #include "Util.h"
 #include "SubstitutionMatrix.h"
 #include "Debug.h"
-#include "block_aligner.h"
 #include <iostream>
-
-#define MAX_SIZE 4096
 
 struct s_profile {
 	simd_int* profile_byte;	// 0: none
@@ -70,14 +67,6 @@ struct s_profile {
 	uint8_t bias;
 	short ** profile_word_linear;
 	int32_t ** profile_int_linear;
-};
-
-struct s_block {
-	PaddedBytes* query;
-	PosBias* query_bias;
-	AAMatrix* mat_aa;
-	BlockHandle block_trace;
-	int16_t* query_bias_arr;
 };
 
 struct simd_data {
@@ -700,14 +689,6 @@ SmithWaterman::SmithWaterman(size_t maxSequenceLength, int aaSize, bool aaBiasCo
 	memset(profile->composition_bias, 0, maxSequenceLength * sizeof(int8_t));
 	memset(profile->composition_bias_rev, 0, maxSequenceLength * sizeof(int8_t));
 
-	// blockaligner
-	block = new s_block();
-	block->query = block_new_padded_aa(maxSequenceLength, MAX_SIZE);
-	block->query_bias = block_new_pos_bias(maxSequenceLength, MAX_SIZE);
-	block->mat_aa = block_new_simple_aamatrix(1, -1);
-	block->block_trace = block_new_aa_trace_xdrop(maxSequenceLength, maxSequenceLength, MAX_SIZE);
-	block->query_bias_arr = new int16_t[maxSequenceLength];
-
 	profile->pos_aa_rev = new int8_t[maxSequenceLength * 32];
 }
 
@@ -738,13 +719,6 @@ SmithWaterman::~SmithWaterman(){
 	delete [] profile->pos_aa_rev;
 	delete profile;
 	delete simdData;
-
-	block_free_padded_aa(block->query);
-	block_free_pos_bias(block->query_bias);
-	block_free_aamatrix(block->mat_aa);
-	block_free_aa_trace_xdrop(block->block_trace);
-	delete [] block->query_bias_arr;
-	delete block;
 }
 
 
@@ -861,31 +835,7 @@ s_align SmithWaterman::ssw_align_private (
 		return align;
 	}
 
-	// run very shot and long overflowing alignments with SW instead of block aligner
-	// short alignments are very fast with byte SW, long alignments produce slightly different scores FIXME
-	if (align.word != 1) {
-		return alignStartPosBacktrace<type>(db_sequence, db_length, gap_open, gap_extend, alignmentMode, backtrace, align, evaluer, covMode, covThr, correlationScoreWeight, maskLen);
-	}
-
-	bool blockAlignFailed = false;
-	s_align alignTmp = alignStartPosBacktraceBlock<type>(db_sequence, db_length, gap_open, gap_extend, backtrace, align);
-	if (alignTmp.score1 == UINT32_MAX) {
-		blockAlignFailed = true;
-	} else {
-		align = alignTmp;
-	}
-
-	if (blockAlignFailed) {
-		Debug(Debug::WARNING) << "Block alignment failed, falling back to Smith-Waterman\n";
-		align = alignStartPosBacktrace<type>(db_sequence, db_length, gap_open, gap_extend, alignmentMode, backtrace, align, evaluer, covMode, covThr, correlationScoreWeight, maskLen);
-	}
-
-	// Check is needed (Below is for alignStartPosBacktraceBlock not for alignStartPosBacktrace since as it's already handled internally.)
-	// align.qCov = computeCov(align.qStartPos1, align.qEndPos1, query_length);
-    // align.tCov = computeCov(align.dbStartPos1, align.dbEndPos1, db_length);
-    // hasLowerCoverage = !(Util::hasCoverage(covThr, covMode, align.qCov, align.tCov));
-
-	return align;
+	return alignStartPosBacktrace<type>(db_sequence, db_length, gap_open, gap_extend, alignmentMode, backtrace, align, evaluer, covMode, covThr, correlationScoreWeight, maskLen);
 }
 
 template <unsigned int type>
@@ -936,192 +886,6 @@ s_align SmithWaterman::alignScoreEndPos (
 		r.score2 = 0;
 		r.ref_end2 = -1;
 	}
-	return r;
-}
-
-template <unsigned int type>
-s_align SmithWaterman::alignStartPosBacktraceBlock(
-	const unsigned char *db_sequence,
-	int32_t db_length,
-	const uint8_t gap_open,
-	const uint8_t gap_extend,
-	std::string & backtrace,
-	s_align r) {
-	size_t query_len = profile->query_length;
-	size_t target_len = db_length;
-	Gaps gaps;
-	gaps.open   = -gap_open;
-	gaps.extend = -gap_extend;
-
-	int32_t target_score = r.score1;
-	AAProfile* queryProfile = nullptr;
-	PosBias* target_bias = nullptr;
-
-	// set query
-	int32_t queryAlnLen = r.qEndPos1 + 1;
-	int32_t queryStartPos = query_len - queryAlnLen;
-	if (type == PROFILE_SEQ) {
-		queryProfile = block_new_aaprofile(queryAlnLen, MAX_SIZE, gaps.extend);
-		// Fill pos_aa_block and aa_pos_block with the relevant range(0-qEndPos, queryAlnLen)
-		// extracted from the matrix initialized in ssw_init(0-qLen) for blockaligner
-		// Replaced block_set_aaprofile, which set every position independently
-		int8_t* pos_aa_block = aaprofile_pos_aa(queryProfile);
-		int16_t* aa_pos_block = aaprofile_aa_pos(queryProfile);
-		size_t curr_len_block = block_get_curr_len_aaprofile(queryProfile);
-
-		for (int i = 0; i < queryAlnLen; i++) {
-			// source: &profile->pos_aa_rev[(queryStartPos + i) * 32]
-			// dest:   &pos_aa_block[(i + 1) * 32]
-			memcpy(
-				&pos_aa_block[(i + 1) * 32],
-				&profile->pos_aa_rev[(queryStartPos + i) * 32],
-				subMat->alphabetSize
-			);
-		}
-		// transpose pos_aa_block to aa_pos_block
-		for (int i = 0; i <= queryAlnLen; i++) {
-			for (int b = 0; b < subMat->alphabetSize; b++) { // or 32 'A'-'Z'
-				int8_t val = pos_aa_block[i * 32 + b];
-				aa_pos_block[b * curr_len_block + i] = static_cast<int16_t>(val);
-			}
-		}
-		// set all gap open and close values, including the costs of padding
-		block_set_all_gap_open_C_aaprofile(queryProfile, gaps.open);
-		block_set_all_gap_close_C_aaprofile(queryProfile, 0);
-		block_set_all_gap_open_R_aaprofile(queryProfile, gaps.open);
-	} else if (type == SEQ_SEQ) {
-		// Since we use num in traceback, we don't need to convert num to aa.
-		// block_set_bytes_padded_aa(block->query,  (const uint8_t*) (block->query_sequence_str.data() + queryStartPos), queryAlnLen, MAX_SIZE);
-		block_set_bytes_padded_aa_numsequence(block->query, (const uint8_t*) (profile->query_rev_sequence + queryStartPos), queryAlnLen, MAX_SIZE);
-		block_set_pos_bias(block->query_bias, block->query_bias_arr + queryStartPos, queryAlnLen);
-	}
-	// set target
-	int32_t targetAlnLen = r.dbEndPos1 + 1;
-	int32_t targetStartPos = target_len - targetAlnLen;
-	PaddedBytes* target = block_new_padded_aa(target_len, MAX_SIZE);
-
-	// Since we use num in traceback, we don't need to convert num to aa.
-	// std::string db_sequence_str;
-	// // copy this db_sequence,db_sequence + r.dbEndPos1 + 1 in reverse order to db_sequence_str and mappping to ascii using subMat->num2aa
-	// for(int i = targetAlnLen - 1; i >= 0; i--){
-	// 	db_sequence_str.push_back(subMat->num2aa[db_sequence[i]]);
-	// }
-	// block_set_bytes_padded_aa(target, (const uint8_t*) db_sequence_str.data(), targetAlnLen, MAX_SIZE);
-	int8_t* db_rev_sequence = new int8_t[target_len];
-	std::reverse_copy(db_sequence, db_sequence + db_length, db_rev_sequence);
-	block_set_bytes_padded_aa_numsequence(target, (const uint8_t*) (db_rev_sequence+targetStartPos), targetAlnLen, MAX_SIZE);
-
-	if (type == SEQ_SEQ){
-		target_bias = block_new_pos_bias(targetAlnLen, MAX_SIZE); // fill 0
-	}
-
-	// substitute profile values to queryProfile
-	AlignResult res;
-	size_t min_size = 32;
-	res.score = -1000000000;
-	res.query_idx = -1;
-	res.reference_idx = -1;
-
-	if (type == SEQ_SEQ){
-		while (min_size <= MAX_SIZE && res.score < target_score) {
-			// allow max block size to grow
-			SizeRange range;
-			range.min = min_size;
-			range.max = MAX_SIZE;
-			// estimated x-drop threshold
-			int32_t x_drop = -(min_size * gaps.extend + gaps.open);
-			block_align_aa_trace_xdrop_posbias(block->block_trace, block->query, block->query_bias, target, target_bias,
-										block->mat_aa, gaps, range, x_drop);
-			res = block_res_aa_trace_xdrop(block->block_trace);
-			min_size *= 2;
-		}
-	} else if (type == PROFILE_SEQ) {
-		while (min_size <= MAX_SIZE && res.score < target_score) {
-			// allow max block size to grow
-			SizeRange range;
-			range.min = min_size;
-			range.max = MAX_SIZE;
-			// estimated x-drop threshold
-			int32_t x_drop = -(min_size * gaps.extend + gaps.open);
-			block_align_profile_aa_trace_xdrop(block->block_trace, target, queryProfile, range, x_drop);
-			res = block_res_aa_trace_xdrop(block->block_trace);
-			min_size *= 2;
-		}
-	}
-
-	size_t cigar_len, queryPos, targetPos;
-	uint32_t aaIds;
-
-	Cigar* cigar = block_new_cigar(res.query_idx, res.reference_idx);
-	// char ops_char[] = {' ', 'M', '=', 'X', 'I', 'D'};
-	if (res.score != target_score && !(target_score == INT16_MAX && res.score >= target_score)) {
-		r.score1 = UINT32_MAX;
-		goto cleanup;
-	}
-
-	block_cigar_aa_trace_xdrop(block->block_trace, res.query_idx, res.reference_idx, cigar);
-	cigar_len = block_len_cigar(cigar);
-
-	// Note: 'M' signals either query match or mismatch
-	aaIds = 0;
-	queryPos = 0;
-	targetPos = 0;
-
-	for (size_t i = 0; i < cigar_len; i++) {
-		OpLen o = block_get_cigar(cigar, i);
-		if(o.op == 1){
-			for(size_t j = 0; j < o.len; j++){
-				// change traceback with int not char
-				if(profile->query_rev_sequence[queryPos + j + queryStartPos] == db_rev_sequence[targetPos + j + targetStartPos]){
-					aaIds++;
-				}
-			}
-			queryPos += o.len;
-			targetPos += o.len;
-			backtrace.append(o.len,'M');
-		}else if(o.op == 4){
-			switch (type) {
-				case SEQ_SEQ:
-					queryPos += o.len;
-					backtrace.append(o.len,'I');
-					break;
-				case PROFILE_SEQ:
-					targetPos += o.len;
-					backtrace.append(o.len,'D');
-					break;
-			}
-		}else if(o.op == 5){
-			switch (type) {
-				case SEQ_SEQ:
-					targetPos += o.len;
-					backtrace.append(o.len,'D');
-					break;
-				case PROFILE_SEQ:
-					queryPos += o.len;
-					backtrace.append(o.len,'I');
-					break;
-			}
-		}
-	}
-	r.identicalAACnt = aaIds;
-
-	//reverse backtrace
-	std::reverse(backtrace.begin(), backtrace.end());
-	r.qStartPos1 = (r.qEndPos1 + 1) - queryPos;
-	r.dbStartPos1 = (r.dbEndPos1 + 1) - targetPos;
-
-	r.qCov = computeCov(r.qStartPos1, r.qEndPos1, query_len);
-	r.tCov = computeCov(r.dbStartPos1, r.dbEndPos1, db_length);
-
-cleanup:
-	block_free_padded_aa(target);
-	block_free_cigar(cigar);
-	if (type == PROFILE_SEQ) {
-		block_free_aaprofile(queryProfile);
-	} else if (type == SEQ_SEQ) {
-		block_free_pos_bias(target_bias);
-	}
-	delete [] db_rev_sequence;
 	return r;
 }
 
@@ -1265,11 +1029,6 @@ template
 s_align SmithWaterman::alignScoreEndPos<SmithWaterman::SEQ_SEQ>(const unsigned char*, int32_t, const uint8_t, const uint8_t, const int32_t);
 template
 s_align SmithWaterman::alignScoreEndPos<SmithWaterman::PROFILE_SEQ>(const unsigned char*, int32_t, const uint8_t, const uint8_t, const int32_t);
-
-template
-s_align SmithWaterman::alignStartPosBacktraceBlock<SmithWaterman::SEQ_SEQ>(const unsigned char*, int32_t, const uint8_t, const uint8_t, std::string&, s_align);
-template
-s_align SmithWaterman::alignStartPosBacktraceBlock<SmithWaterman::PROFILE_SEQ>(const unsigned char*, int32_t, const uint8_t, const uint8_t, std::string&, s_align);
 
 template
 s_align SmithWaterman::alignStartPosBacktrace<SmithWaterman::SEQ_SEQ>(const unsigned char*, int32_t, const uint8_t, const uint8_t, const uint8_t, std::string&, s_align, EvalueComputation*, const int, const float, const float, const int32_t);
@@ -1458,18 +1217,6 @@ void SmithWaterman::ssw_init(const Sequence* q,
 				profile->pos_aa_rev[idx] = static_cast<int8_t>(score);
 			}
 			rowIdx += 32;
-		}
-	}
-	else {
-		for (int i = 0; i < q->L; i++) {
-			block->query_bias_arr[i] = profile->composition_bias_rev[i];
-		}
-
-		for (int aa1 = 0; aa1 < m->alphabetSize; aa1++) {
-			for (int aa2 = 0; aa2 < m->alphabetSize; aa2++) {
-				// instead of num2aa, use aa directly
-				block_set_aamatrix_num(block->mat_aa, aa1, aa2, m->subMatrix[aa1][aa2]);
-			}
 		}
 	}
 }
