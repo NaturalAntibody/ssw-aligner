@@ -1,6 +1,6 @@
 [build-system]
-requires = ["setuptools>=64", "wheel"]
-build-backend = "setuptools.build_meta"
+requires = ["poetry-core>=2.0.0"]
+build-backend = "poetry.core.masonry.api"
 
 [project]
 name = "ssw-aligner"
@@ -16,9 +16,19 @@ dependencies = [
 [project.optional-dependencies]
 dev = ["pytest", "blosum", "scikit-bio==0.6.2"]
 
-[tool.setuptools.packages.find]
-where = ["."]
-include = ["ssw_aligner*"]
+[tool.poetry]
+packages = [
+    { include = "ssw_aligner" },
+]
+include = [
+    { path = "ssw_aligner/libssw_aligner.so", format = "wheel" },
+]
+exclude = [
+    "ssw_aligner/libssw_aligner.so",  # generated — not tracked in git
+]
+
+[tool.poetry.build]
+script = "build.py"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
