@@ -1,4 +1,6 @@
-/* Permission is hereby granted, free of charge, to any person
+/* SPDX-License-Identifier: MIT
+ *
+ * Permission is hereby granted, free of charge, to any person
  * obtaining a copy of this software and associated documentation
  * files (the "Software"), to deal in the Software without
  * restriction, including without limitation the rights to use, copy,
@@ -20,12 +22,26 @@
  *
  * Copyright:
  *   2020-2021 Christopher Moore <moore@free.fr>
- *   2020      Evan Nemerson <evan@nemerson.com>
+ *   2020-2022 Evan Nemerson <evan@nemerson.com>
+ *   2023      Michael R. Crusoe <crusoe@debian.org>
  */
 
 #if !defined(SIMDE_X86_GFNI_H)
 #define SIMDE_X86_GFNI_H
 
+#include <stddef.h>
+#include <stdint.h>
+
+#include "../hedley.h"
+#include "../simde-diagnostic.h"
+#include "../simde-features.h"
+#include "../simde-common.h"
+#include "sse2.h"
+#include "sse4.1.h"
+#include "ssse3.h"
+#include "avx.h"
+#include "avx2.h"
+#include "avx512/types.h"
 #include "avx512/add.h"
 #include "avx512/and.h"
 #include "avx512/broadcast.h"
@@ -267,7 +283,7 @@ simde_x_mm_gf2p8matrix_multiply_epi64_epi8 (simde__m128i x, simde__m128i A) {
     for (int i = 0 ; i < 8 ; i++) {
       #if defined(SIMDE_BUG_CLANG_50932)
         p = HEDLEY_REINTERPRET_CAST(SIMDE_POWER_ALTIVEC_VECTOR(unsigned char),
-                                    vec_bperm(HEDLEY_STATIC_CAST(SIMDE_POWER_ALTIVEC_VECTOR(unsigned __int128), a), bit_select));
+                                    vec_bperm(HEDLEY_REINTERPRET_CAST(SIMDE_POWER_ALTIVEC_VECTOR(unsigned __int128), a), bit_select));
       #else
         p = vec_bperm(a, bit_select);
       #endif

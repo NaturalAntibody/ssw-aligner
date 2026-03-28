@@ -350,16 +350,20 @@ size_t Util::ompCountLines(const char* data, size_t dataSize, unsigned int MAYBE
 #endif
 
     size_t pageSize = getPageSize();
+#ifdef _OPENMP
 #pragma omp parallel num_threads(threadCnt)
     {
 #pragma omp for schedule(static) reduction (+: cnt)
+#endif
         for (size_t page = 0; page < dataSize; page += pageSize) {
             size_t readUntil = std::min(dataSize, page + pageSize);
             for(size_t pos = page; pos < readUntil; pos++ ){
                 cnt += (data[pos] == '\n') ? 1 : 0;
             }
         }
+#ifdef _OPENMP
     }
+#endif
 
     return cnt;
 }
@@ -409,8 +413,12 @@ size_t Util::ompCountLines(const char* data, size_t dataSize, unsigned int MAYBE
 
 int Util::omp_thread_count() {
     int n = 0;
+#ifdef _OPENMP
 #pragma omp parallel reduction(+:n)
     n += 1;
+#else
+    n = 1;
+#endif
     return n;
 }
 std::map<unsigned int, std::string> Util::readLookup(const std::string& file, const unsigned char removeSplit) {

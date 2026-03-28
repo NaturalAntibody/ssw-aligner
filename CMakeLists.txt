@@ -22,7 +22,6 @@ endif()
 # SIMD flags
 if(HAVE_AVX2)
     add_compile_options(-mavx2 -DAVX2)
-    add_compile_definitions(AVX2=1)
 elseif(HAVE_SSE4_1)
     add_compile_options(-msse4.1)
     add_compile_definitions(SSE=1)
@@ -103,6 +102,10 @@ set(ALL_SRCS
 if(NOT HAVE_MPI)
     list(REMOVE_ITEM ALL_SRCS src/commons/MMseqsMPI.cpp)
 endif()
+
+# Suppress warnings in third-party ALP sources (public-domain NCBI code,
+# not ours to fix: -Wcomment, -Woverloaded-virtual, -Wunused-variable, etc.)
+set_source_files_properties(${ALP_SRCS} PROPERTIES COMPILE_OPTIONS "-w")
 
 # ---------- Library target ----------
 add_library(ssw_aligner ${ALL_SRCS})

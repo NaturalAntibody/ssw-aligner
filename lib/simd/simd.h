@@ -51,7 +51,9 @@
 //#endif
 
 #if defined(AVX512) || defined(SIMDE_X86_AVX2_NATIVE)
-#define AVX2
+#  ifndef AVX2
+#    define AVX2
+#  endif
 #endif
 
 #ifdef AVX512
