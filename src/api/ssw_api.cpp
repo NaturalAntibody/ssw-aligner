@@ -8,8 +8,6 @@
 #include <algorithm>
 #include <cstring>
 #include <cmath>
-#include <limits>
-#include <string>
 
 #include "BaseMatrix.h"
 #include "Parameters.h"
@@ -219,19 +217,12 @@ ssw_result ssw_align(ssw_handle   *handle,
      */
     uint8_t alignmentMode = (flag == 0) ? 0 : 3;
 
-    std::string backtrace;  /* populated by the engine but unused here */
     s_align a = handle->sw->ssw_align(
         reinterpret_cast<const unsigned char *>(ref_num),
         refLen,
-        backtrace,
         gap_open,
         gap_extend,
         alignmentMode,
-        /*evalueThr=*/std::numeric_limits<double>::max(),
-        /*evaluer=*/nullptr,
-        /*covMode=*/0,
-        /*covThr=*/0.0f,
-        /*correlationScoreWeight=*/0.0f,
         maskLen);
 
     /* Translate to ssw_result */

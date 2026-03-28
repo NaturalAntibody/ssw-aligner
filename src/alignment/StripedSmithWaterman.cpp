@@ -780,22 +780,17 @@ void SmithWaterman::reverseMat(int8_t *mat_rev, const int8_t *mat, const int32_t
 s_align SmithWaterman::ssw_align (
         const unsigned char *db_num_sequence,
         int32_t db_length,
-        std::string & backtrace,
         const uint8_t gap_open,
         const uint8_t gap_extend,
-        const uint8_t alignmentMode,	//  (from high to low) bit 5: return the best alignment beginning position; 6: if (ref_end1 - ref_begin1 <= filterd) && (read_end1 - read_begin1 <= filterd), return cigar; 7: if max score >= filters, return cigar; 8: always return cigar; if 6 & 7 are both setted, only return cigar when both filter fulfilled
-        const double  evalueThr,
-        EvalueComputation * evaluer,
-        const int covMode, const float covThr, const float correlationScoreWeight,
+        const uint8_t alignmentMode,
         const int32_t maskLen) {
     s_align alignment;
-    // check if both query and target are profiles
 	if (profile->isProfile) {
-        alignment = ssw_align_private<SmithWaterman::PROFILE_SEQ>(db_num_sequence, db_length, backtrace, gap_open,
-                                                                  gap_extend, alignmentMode, evalueThr, evaluer, covMode, covThr, correlationScoreWeight, maskLen);
+        alignment = ssw_align_private<SmithWaterman::PROFILE_SEQ>(db_num_sequence, db_length, gap_open,
+                                                                  gap_extend, alignmentMode, maskLen);
     } else {
-        alignment = ssw_align_private<SmithWaterman::SEQ_SEQ>(db_num_sequence, db_length, backtrace, gap_open,
-                                                              gap_extend, alignmentMode, evalueThr, evaluer, covMode, covThr, correlationScoreWeight, maskLen);
+        alignment = ssw_align_private<SmithWaterman::SEQ_SEQ>(db_num_sequence, db_length, gap_open,
+                                                              gap_extend, alignmentMode, maskLen);
     }
     return alignment;
 }
@@ -805,16 +800,10 @@ template <unsigned int type>
 s_align SmithWaterman::ssw_align_private (
 	const unsigned char *db_sequence,
 	int32_t db_length,
-	std::string & backtrace,
 	const uint8_t gap_open,
 	const uint8_t gap_extend,
-	const uint8_t alignmentMode,	//  (from high to low) bit 5: return the best alignment beginning position; 6: if (ref_end1 - ref_begin1 <= filterd) && (read_end1 - read_begin1 <= filterd), return cigar; 7: if max score >= filters, return cigar; 8: always return cigar; if 6 & 7 are both setted, only return cigar when both filter fulfilled
-	const double  evalueThr,
-	EvalueComputation * evaluer,
-	const int covMode, const float covThr, const float correlationScoreWeight,
+	const uint8_t alignmentMode,
 	const int32_t maskLen) {
-
-	int32_t query_length = profile->query_length;
 
 	// find the alignment position
 	s_align align = alignScoreEndPos<type>(db_sequence, db_length, gap_open, gap_extend, maskLen);
@@ -824,18 +813,11 @@ s_align SmithWaterman::ssw_align_private (
 		return align;
 	}
 
-	align.qCov = computeCov(0, align.qEndPos1, query_length);
-	align.tCov = computeCov(0, align.dbEndPos1, db_length);
-
-	bool hasLowerCoverage = !(Util::hasCoverage(covThr, covMode, align.qCov, align.tCov));
-	align.evalue = (evaluer != NULL) ? evaluer->computeEvalue(align.score1, query_length) : 0.0;
-	bool hasLowerEvalue = align.evalue > evalueThr;
-
-	if (alignmentMode == 0 || ((alignmentMode == 2 || alignmentMode == 1) && (hasLowerEvalue || hasLowerCoverage))) {
+	if (alignmentMode == 0) {
 		return align;
 	}
 
-	return alignStartPosBacktrace<type>(db_sequence, db_length, gap_open, gap_extend, alignmentMode, backtrace, align, evaluer, covMode, covThr, correlationScoreWeight, maskLen);
+	return alignStartPosBacktrace<type>(db_sequence, db_length, gap_open, gap_extend, alignmentMode, align, maskLen);
 }
 
 template <unsigned int type>
@@ -895,12 +877,8 @@ s_align SmithWaterman::alignStartPosBacktrace (
         int32_t db_length,
         const uint8_t gap_open,
         const uint8_t gap_extend,
-        const uint8_t alignmentMode,	//  (from high to low) bit 5: return the best alignment beginning position; 6: if (ref_end1 - ref_begin1 <= filterd) && (read_end1 - read_begin1 <= filterd), return cigar; 7: if max score >= filters, return cigar; 8: always return cigar; if 6 & 7 are both setted, only return cigar when both filter fulfilled
-        std::string & backtrace,
+        const uint8_t alignmentMode,
         s_align r,
-		EvalueComputation * evaluer,
-        const int covMode, const float covThr,
-		const float correlationScoreWeight,
         const int32_t maskLen) {
     int32_t query_length = profile->query_length;
     int32_t queryOffset = query_length - r.qEndPos1 - 1;
@@ -971,12 +949,8 @@ s_align SmithWaterman::alignStartPosBacktrace (
         EXIT(EXIT_FAILURE);
     }
 
-    r.qCov = computeCov(r.qStartPos1, r.qEndPos1, query_length);
-    r.tCov = computeCov(r.dbStartPos1, r.dbEndPos1, db_length);
-    bool hasLowerCoverage = !(Util::hasCoverage(covThr, covMode, r.qCov, r.tCov));
-
     // only start and end point are needed
-    if (alignmentMode == 1 || hasLowerCoverage) {
+    if (alignmentMode == 1) {
         return r;
     }
 
@@ -1002,28 +976,16 @@ s_align SmithWaterman::alignStartPosBacktrace (
     if (path != NULL) {
         r.cigar = path->seq;
         r.cigarLen = path->length;
-    }
-
-    uint32_t aaIds = 0;
-    size_t mStateCnt = 0;
-	// Need check below for Profile_seq
-	computerBacktrace(profile, db_sequence, r, backtrace, aaIds, scorePerCol, mStateCnt);
-    r.identicalAACnt = aaIds;
-	if(correlationScoreWeight > 0.0){
-        int correlationScore = computeCorrelationScore(scorePerCol, mStateCnt);
-        r.score1 += static_cast<float>(correlationScore) * correlationScoreWeight;
-        r.evalue = (evaluer != NULL) ? evaluer->computeEvalue(r.score1, query_length) : 0.0;
-    }
-	if(path != NULL) {
         delete path;
     }
+
     return r;
 }
 
 template
-s_align SmithWaterman::ssw_align_private<SmithWaterman::SEQ_SEQ>(const unsigned char*, int32_t, std::string&, const uint8_t, const uint8_t, const uint8_t, const double, EvalueComputation*, const int, const float, const float, const int32_t);
+s_align SmithWaterman::ssw_align_private<SmithWaterman::SEQ_SEQ>(const unsigned char*, int32_t, const uint8_t, const uint8_t, const uint8_t, const int32_t);
 template
-s_align SmithWaterman::ssw_align_private<SmithWaterman::PROFILE_SEQ>(const unsigned char*, int32_t, std::string&, const uint8_t, const uint8_t, const uint8_t, const double, EvalueComputation*, const int, const float, const float, const int32_t);
+s_align SmithWaterman::ssw_align_private<SmithWaterman::PROFILE_SEQ>(const unsigned char*, int32_t, const uint8_t, const uint8_t, const uint8_t, const int32_t);
 
 template
 s_align SmithWaterman::alignScoreEndPos<SmithWaterman::SEQ_SEQ>(const unsigned char*, int32_t, const uint8_t, const uint8_t, const int32_t);
@@ -1031,9 +993,9 @@ template
 s_align SmithWaterman::alignScoreEndPos<SmithWaterman::PROFILE_SEQ>(const unsigned char*, int32_t, const uint8_t, const uint8_t, const int32_t);
 
 template
-s_align SmithWaterman::alignStartPosBacktrace<SmithWaterman::SEQ_SEQ>(const unsigned char*, int32_t, const uint8_t, const uint8_t, const uint8_t, std::string&, s_align, EvalueComputation*, const int, const float, const float, const int32_t);
+s_align SmithWaterman::alignStartPosBacktrace<SmithWaterman::SEQ_SEQ>(const unsigned char*, int32_t, const uint8_t, const uint8_t, const uint8_t, s_align, const int32_t);
 template
-s_align SmithWaterman::alignStartPosBacktrace<SmithWaterman::PROFILE_SEQ>(const unsigned char*, int32_t, const uint8_t, const uint8_t, const uint8_t, std::string&, s_align, EvalueComputation*, const int, const float, const float, const int32_t);
+s_align SmithWaterman::alignStartPosBacktrace<SmithWaterman::PROFILE_SEQ>(const unsigned char*, int32_t, const uint8_t, const uint8_t, const uint8_t, s_align, const int32_t);
 
 void SmithWaterman::computerBacktrace(s_profile * query, const unsigned char * db_sequence,
                                       s_align & alignment, std::string & backtrace,

@@ -149,23 +149,14 @@ public:
         const uint8_t gap_open,
         const uint8_t gap_extend,
         const uint8_t alignmentMode,
-        std::string & backtrace,
         s_align r,
-        EvalueComputation * evaluer,
-        const int covMode,
-        const float covThr,
-        const float correlationScoreWeight,
         const int32_t maskLen);
 
     s_align  ssw_align (const unsigned char *db_num_sequence,
                         int32_t db_length,
-                        std::string &backtrace,
                         const uint8_t gap_open,
                         const uint8_t gap_extend,
-                        const uint8_t alignmentMode,	//  (from high to low) bit 5: return the best alignment beginning position; 6: if (ref_end1 - ref_begin1 <= filterd) && (read_end1 - read_begin1 <= filterd), return cigar; 7: if max score >= filters, return cigar; 8: always return cigar; if 6 & 7 are both setted, only return cigar when both filter fulfilled
-                        const double filters,
-                        EvalueComputation * filterd,
-                        const int covMode, const float covThr, const float correlationScoreWeight,
+                        const uint8_t alignmentMode,
                         const int32_t maskLen);
 
 
@@ -259,13 +250,9 @@ private:
     template <unsigned int type>
     s_align ssw_align_private (const unsigned char*db_sequence,
                         int32_t db_length,
-                        std::string &backtrace,
                         const uint8_t gap_open,
                         const uint8_t gap_extend,
-                        const uint8_t alignmentMode,	//  (from high to low) bit 5: return the best alignment beginning position; 6: if (ref_end1 - ref_begin1 <= filterd) && (read_end1 - read_begin1 <= filterd), return cigar; 7: if max score >= filters, return cigar; 8: always return cigar; if 6 & 7 are both setted, only return cigar when both filter fulfilled
-                        const double filters,
-                        EvalueComputation * filterd,
-                        const int covMode, const float covThr, const float correlationScoreWeight,
+                        const uint8_t alignmentMode,
                         const int32_t maskLen);
 
     template <unsigned int type>
