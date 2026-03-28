@@ -7,6 +7,7 @@ protein alignments, covering all the usage patterns found in riot_na.
 
 import pytest
 import blosum  # type: ignore
+from skbio.alignment import StripedSmithWaterman as SkbioSSW  # type: ignore
 
 from ssw_aligner import StripedSmithWaterman
 
@@ -333,18 +334,9 @@ class TestAlignmentStructure:
 
 
 # ---------------------------------------------------------------------------
-# 5. Cross-validation against scikit-bio (if available)
+# 5. Cross-validation against scikit-bio
 # ---------------------------------------------------------------------------
 
-def skbio_available():
-    try:
-        from skbio.alignment import StripedSmithWaterman as SkbioSSW  # type: ignore
-        return True
-    except ImportError:
-        return False
-
-
-@pytest.mark.skipif(not skbio_available(), reason="scikit-bio not installed")
 class TestCrossValidation:
     """Compare ssw-aligner output to scikit-bio for identical inputs."""
 
@@ -360,8 +352,6 @@ class TestCrossValidation:
     ]
 
     def _compare(self, query, target, **params):
-        from skbio.alignment import StripedSmithWaterman as SkbioSSW  # type: ignore
-
         ssw_res = StripedSmithWaterman(query, **params)(target)
         skbio_res = SkbioSSW(query, **params)(target)
 
@@ -426,8 +416,6 @@ class TestCrossValidation:
 
     def test_multiple_targets_nt(self):
         """Reusing an aligner with multiple targets yields identical results."""
-        from skbio.alignment import StripedSmithWaterman as SkbioSSW  # type: ignore
-
         query = "ACGTACGTACGTACGT"
         targets = ["ACGTACGT", "TACGTACG", "AAACCCGGG", "ACGTACGTACGTACGT"]
 
@@ -445,8 +433,6 @@ class TestCrossValidation:
 
     def test_multiple_targets_aa(self):
         """Reusing an AA aligner with multiple targets yields identical results."""
-        from skbio.alignment import StripedSmithWaterman as SkbioSSW  # type: ignore
-
         query = "QVQLVQSGAEVKKPGASVKVSCKAS"
         targets = [
             "QVQLVQSGAEVKKPGASVKVSCKAS",
