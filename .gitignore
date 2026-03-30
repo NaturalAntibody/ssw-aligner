@@ -1,1 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+*.egg-info/
+dist/
+*.egg
+
+# Build artifacts
+build/
+
+# Virtual environments
+.venv/
 .python-version
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Project-specific
+*.pdf
+
+ssw_aligner.egg-info/*
+**/__pycache__/
+*.so

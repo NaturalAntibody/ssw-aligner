@@ -1,2 +1,0 @@
-ssw_aligner
-tests

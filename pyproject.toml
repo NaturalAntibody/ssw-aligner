@@ -1,20 +1,39 @@
-[build-system]
-requires = ["setuptools>=64", "wheel", "cython>=0.29", "numpy>=1.17"]
-build-backend = "setuptools.build_meta"
 
 [project]
 name = "ssw-aligner"
-version = "0.1.0"
-description = "Standalone StripedSmithWaterman (SSW) aligner extracted from scikit-bio"
+version = "0.2.0"
+description = "SIMD-accelerated Smith-Waterman local aligner (MMseqs2 engine, pure-ctypes Python API)"
 readme = "README.md"
-license = "BSD-3-Clause AND MIT"
-requires-python = ">=3.9"
-dependencies = [
-    "numpy>=1.17.0",
+license = "GPL-3.0-only"
+requires-python = ">=3.10,<3.13"
+dependencies = ["numpy>=1.17.0"]
+
+[dependency-groups]
+dev = ["pytest (>=9.0.2,<10.0.0)", "blosum (>=2.2.0,<3.0.0)", "scikit-bio==0.6.2"]
+
+[build-system]
+requires = ["poetry-core>=2.0.0", "cmake>=3.14"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry]
+packages = [{ include = "ssw_aligner" }]
+include = [
+    # Wheel: bundle the compiled shared library
+    { path = "ssw_aligner/libssw_aligner.so", format = "wheel" },
+    # Sdist: include all C++ sources needed for CMake build
+    { path = "CMakeLists.txt", format = "sdist" },
+    { path = "src/**/*", format = "sdist" },
+    { path = "lib/**/*", format = "sdist" },
+    { path = "generated/**/*", format = "sdist" },
+    { path = "simde-sse2.h", format = "sdist" },
+]
+exclude = [
+    "ssw_aligner/libssw_aligner.so", # generated — not tracked in git
 ]
 
-[project.optional-dependencies]
-dev = ["pytest", "cython", "scikit-bio==0.6.2"]
+[tool.poetry.build]
+script = "scripts/build_ext.py"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
