@@ -7,12 +7,15 @@ Author: scikit-bio development team / Boston College (SSW C library)
 License-Expression: BSD-3-Clause AND MIT
 Requires-Python: >=3.9
 Description-Content-Type: text/markdown
+License-File: LICENSE.txt
 Requires-Dist: numpy>=1.17.0
 Provides-Extra: dev
 Requires-Dist: pytest; extra == "dev"
 Requires-Dist: cython; extra == "dev"
+Requires-Dist: scikit-bio==0.6.2; extra == "dev"
 Dynamic: author
 Dynamic: home-page
+Dynamic: license-file
 Dynamic: requires-python
 
 # ssw-aligner
@@ -30,25 +33,30 @@ pip install .
 ## Usage
 
 ```python
-from ssw_aligner import StripedSmithWaterman
+from ssw_aligner import BLOSUM_62, StripedSmithWaterman, calculate_seq_identity, compute_bit_score
 
 # Nucleotide alignment
 aligner = StripedSmithWaterman("ACTGACTG")
 result = aligner("AACTGACTGA")
 print(result["optimal_alignment_score"])
 print(result["cigar"])
+print(calculate_seq_identity(result["cigar"], result["query_sequence"], result["target_sequence"]))
 
-# Protein alignment (requires a substitution matrix)
-import blosum
+# Protein alignment
 aligner = StripedSmithWaterman(
     "ARNDCQEGHILKMFPSTWYV",
     protein=True,
-    substitution_matrix=blosum.BLOSUM(62),
+    substitution_matrix=BLOSUM_62,
     gap_open_penalty=11,
     gap_extend_penalty=1,
 )
 result = aligner("ARNDCQEGHILKMFPSTWYV")
+print(compute_bit_score(result["optimal_alignment_score"]))
 ```
+
+The package also exposes pure-Python helpers for common post-alignment metrics:
+`BLOSUM_62`, `compute_raw_score_aa`, `compute_bit_score`, `compute_evalue`,
+and `calculate_seq_identity`.
 
 ## Migrating from scikit-bio
 

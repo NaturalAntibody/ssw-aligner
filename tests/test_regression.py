@@ -6,9 +6,8 @@ protein alignments, covering all the usage patterns found in riot_na.
 """
 
 import pytest
-import blosum  # type: ignore
 
-from ssw_aligner import AlignmentStructure, StripedSmithWaterman
+from ssw_aligner import AlignmentStructure, BLOSUM_62, StripedSmithWaterman
 
 
 # ---------------------------------------------------------------------------
@@ -26,7 +25,7 @@ AA_ALIGNER_PARAMS = {
     "gap_open_penalty": 11,
     "gap_extend_penalty": 1,
     "protein": True,
-    "substitution_matrix": blosum.BLOSUM(62),
+    "substitution_matrix": BLOSUM_62,
 }
 
 
