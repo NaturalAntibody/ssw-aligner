@@ -3,6 +3,7 @@
 # Drop-in replacement for skbio.alignment.StripedSmithWaterman.
 
 from ssw_aligner._blosum_62 import BLOSUM_62
+from ssw_aligner.aligners import ProteinAligner, NucleotideAligner
 from ssw_aligner.metrics import (
 	GumbellParams,
 	calculate_seq_identity,
@@ -23,6 +24,8 @@ __all__ = [
 	"AlignmentStructure",
 	"BLOSUM_62",
 	"GumbellParams",
+	"NucleotideAligner",
+	"ProteinAligner",
 	"StripedSmithWaterman",
 	"calculate_seq_identity",
 	"compute_bit_score",
