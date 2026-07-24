@@ -1,11 +1,19 @@
 from collections.abc import Mapping
-from typing import Any
+from typing import TYPE_CHECKING, Any, Optional
 
 from ssw_aligner._blosum_62 import BLOSUM_62
 
-ALIGNER_PARAMS = {"match_score": 1, "mismatch_score": -1, "gap_open_penalty": 4, "gap_extend_penalty": 1}
+if TYPE_CHECKING:
+    from ssw_aligner._ssw_wrapper import AlignmentStructure
 
-AA_ALIGNER_PARAMS = {
+ALIGNER_PARAMS: dict[str, Any] = {
+    "match_score": 1,
+    "mismatch_score": -1,
+    "gap_open_penalty": 4,
+    "gap_extend_penalty": 1,
+}
+
+AA_ALIGNER_PARAMS: dict[str, Any] = {
     "gap_open_penalty": 11,
     "gap_extend_penalty": 1,
     "protein": True,
@@ -17,6 +25,7 @@ _EXTENSION_IMPORT_MESSAGE = (
     "Install a wheel or rebuild the extension for the active Python environment."
 )
 
+_extension_import_error: Optional[BaseException]
 try:
     from ssw_aligner._ssw_wrapper import StripedSmithWaterman as _StripedSmithWaterman
 except ImportError as exc:
@@ -37,10 +46,10 @@ class _AlignerWrapper:
         aligner_kwargs.update(kwargs)
         self._aligner = _StripedSmithWaterman(query_sequence, **aligner_kwargs)
 
-    def __call__(self, target_sequence: str):
+    def __call__(self, target_sequence: str) -> "AlignmentStructure":
         return self._aligner(target_sequence)
 
-    def __getattr__(self, name: str):
+    def __getattr__(self, name: str) -> Any:
         return getattr(self._aligner, name)
 
     def __repr__(self) -> str:

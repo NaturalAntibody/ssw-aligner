@@ -124,6 +124,7 @@ setup(
     author="scikit-bio development team / Boston College (SSW C library)",
     url="https://github.com/scikit-bio/scikit-bio",
     packages=find_packages(),
+    package_data={"ssw_aligner": ["py.typed", "_ssw_wrapper.pyi"]},
     ext_modules=extensions,
     include_dirs=[np.get_include()],
     python_requires=">=3.9",

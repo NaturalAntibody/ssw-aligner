@@ -3,10 +3,14 @@ README.md
 pyproject.toml
 setup.py
 ssw_aligner/__init__.py
+ssw_aligner/__init__.pyi
 ssw_aligner/_blosum_62.py
+ssw_aligner/_blosum_62.pyi
 ssw_aligner/_ssw_wrapper.c
-ssw_aligner/alignment_utils.py
-ssw_aligner/metrics.py
+ssw_aligner/_ssw_wrapper.pyi
+ssw_aligner/aligners.py
+ssw_aligner/aligners.pyi
+ssw_aligner/py.typed
 ssw_aligner.egg-info/PKG-INFO
 ssw_aligner.egg-info/SOURCES.txt
 ssw_aligner.egg-info/dependency_links.txt
@@ -16,5 +20,5 @@ ssw_aligner/_lib/__init__.py
 ssw_aligner/_lib/ssw.c
 ssw_aligner/_lib/ssw.h
 tests/__init__.py
-tests/test_metrics.py
+tests/test_aligners.py
 tests/test_regression.py
