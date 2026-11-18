@@ -5,7 +5,7 @@ build-backend = "scikit_build_core.build"
 
 [project]
 name = "ssw-aligner-na"
-version = "0.1.0"
+version = "1.0.0"
 description = "Standalone StripedSmithWaterman (SSW) aligner extracted from scikit-bio"
 readme = "README.md"
 authors = [
