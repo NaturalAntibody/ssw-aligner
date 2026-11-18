@@ -10,8 +10,35 @@ For RIOT-compatible defaults, use `NucleotideAligner` or `ProteinAligner`.
 ## Installation
 
 ```bash
-pip install .
+pip install ssw-aligner-na   # prebuilt wheels for Linux, macOS and Windows
 ```
+
+The distribution is named `ssw-aligner-na` on PyPI (`ssw_aligner` is taken by an
+unrelated project); the import name is still `ssw_aligner`.
+
+## Development
+
+The project is managed with [uv](https://docs.astral.sh/uv/) and built with
+[scikit-build-core](https://scikit-build-core.readthedocs.io/) (CMake + Cython).
+You need a C compiler; CMake, Cython and NumPy are installed into the isolated
+build environment automatically.
+
+```bash
+uv sync               # create .venv, build the extension, install dev deps
+uv run pytest         # run the tests (incl. regression against scikit-bio)
+uv build              # build the sdist and a wheel for this machine into dist/
+```
+
+`uv sync` rebuilds the extension whenever `CMakeLists.txt` or a `.pyx`/`.c`/`.h`
+file changes; the CMake build tree is kept in `build/` so rebuilds are incremental.
+
+## Releasing
+
+Every push to `master` runs `.github/workflows/ci.yml`: python-semantic-release
+bumps the version from the conventional commits (and refreshes `uv.lock`),
+cibuildwheel builds wheels for Linux (x86_64, aarch64), macOS (universal2) and
+Windows (AMD64) for CPython 3.10–3.15 and PyPy 3.11, `uv build --sdist` builds
+the sdist, and `uv publish` uploads everything to PyPI with trusted publishing.
 
 ## RIOT-Compatible Wrappers
 
