@@ -34,7 +34,9 @@ file changes; the CMake build tree is kept in `build/` so rebuilds are increment
 
 ## Releasing
 
-Every push to `master` runs `.github/workflows/ci.yml`: python-semantic-release
+Pull requests run `.github/workflows/pull-request.yml` (tests, then wheels and
+sdist for every platform). Every push to `master` runs
+`.github/workflows/push-master.yml`: tests, then python-semantic-release
 bumps the version from the conventional commits (and refreshes `uv.lock`),
 cibuildwheel builds wheels for Linux (x86_64, aarch64), macOS (universal2) and
 Windows (AMD64) for CPython 3.10–3.15 and PyPy 3.11, `uv build --sdist` builds
