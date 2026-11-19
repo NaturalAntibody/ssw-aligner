@@ -36,11 +36,14 @@ file changes; the CMake build tree is kept in `build/` so rebuilds are increment
 
 Pull requests run `.github/workflows/pull-request.yml` (tests, then wheels and
 sdist for every platform). Every push to `master` runs
-`.github/workflows/push-master.yml`: tests, then python-semantic-release
+`.github/workflows/push-master.yml` (following python-semantic-release's
+recommended workflow): tests, then python-semantic-release
 bumps the version from the conventional commits (and refreshes `uv.lock`),
 cibuildwheel builds wheels for Linux (x86_64, aarch64), macOS (universal2) and
 Windows (AMD64) for CPython 3.10–3.15 and PyPy 3.11, `uv build --sdist` builds
-the sdist, and `uv publish` uploads everything to PyPI with trusted publishing.
+the sdist; the files are then attached to the GitHub release and uploaded to
+PyPI with trusted publishing. Build and publish only run when a new version
+was released.
 
 ## RIOT-Compatible Wrappers
 
