@@ -5,7 +5,7 @@ import re
 
 import pytest
 
-from ssw_aligner import ProteinAligner, StripedSmithWaterman
+from ssw_aligner import EqualScoreSide, ProteinAligner, StripedSmithWaterman
 from ssw_aligner._blosum_62 import BLOSUM_62
 from ssw_aligner.aligners import AA_ALIGNER_PARAMS
 
@@ -58,7 +58,7 @@ def test_start_tie_is_extended():
     plain = align(CATUMAXOMAB, GERMLINE)
     assert (plain.query_begin, plain.target_begin, plain.cigar) == (17, 3, "95M")
 
-    extended = align(CATUMAXOMAB, GERMLINE, extend_equal_score="start")
+    extended = align(CATUMAXOMAB, GERMLINE, extend_equal_score=EqualScoreSide.START)
     assert (extended.query_begin, extended.target_begin) == (13, 0)
     assert extended.cigar == "3M1I95M"
     assert extended.optimal_alignment_score == plain.optimal_alignment_score == 485
@@ -67,11 +67,16 @@ def test_start_tie_is_extended():
     assert rescore(extended) == 485
 
 
+@pytest.mark.parametrize("side", [EqualScoreSide.START, "start", EqualScoreSide.BOTH, "both"])
+def test_enum_and_string_values_are_equivalent(side):
+    assert align(CATUMAXOMAB, GERMLINE, extend_equal_score=side).cigar == "3M1I95M"
+
+
 def test_end_tie_is_extended():
     """The same tie, at the end of the alignment of the reversed sequences."""
     query, target = CATUMAXOMAB[::-1], GERMLINE[::-1]
     plain = align(query, target)
-    extended = align(query, target, extend_equal_score="end")
+    extended = align(query, target, extend_equal_score=EqualScoreSide.END)
 
     assert plain.cigar == "95M"
     assert extended.cigar == "95M1I3M"
@@ -82,17 +87,17 @@ def test_end_tie_is_extended():
 
 def test_start_mode_does_not_extend_the_end():
     query, target = CATUMAXOMAB[::-1], GERMLINE[::-1]
-    assert fields(align(query, target, extend_equal_score="start")) == fields(align(query, target))
+    assert fields(align(query, target, extend_equal_score=EqualScoreSide.START)) == fields(align(query, target))
 
 
 def test_negative_extension_is_not_taken():
     # K/Q scores 1 less than E/Q: the extension would score -1
     query = CATUMAXOMAB.replace("SEVQLL", "SKVQLL")
-    assert fields(align(query, GERMLINE, extend_equal_score="both")) == fields(align(query, GERMLINE))
+    assert fields(align(query, GERMLINE, extend_equal_score=EqualScoreSide.BOTH)) == fields(align(query, GERMLINE))
 
 
 def test_max_tie_insertions_zero_allows_no_insertion():
-    assert fields(align(CATUMAXOMAB, GERMLINE, extend_equal_score="start", max_tie_insertions=0)) == fields(
+    assert fields(align(CATUMAXOMAB, GERMLINE, extend_equal_score=EqualScoreSide.START, max_tie_insertions=0)) == fields(
         align(CATUMAXOMAB, GERMLINE)
     )
 
@@ -103,9 +108,9 @@ def test_max_tie_insertions_limits_inserted_residues():
     plain = align(query, GERMLINE)
     assert plain.target_begin == 3
 
-    assert fields(align(query, GERMLINE, extend_equal_score="start")) == fields(plain)  # default: 2
+    assert fields(align(query, GERMLINE, extend_equal_score=EqualScoreSide.START)) == fields(plain)  # default: 2
 
-    extended = align(query, GERMLINE, extend_equal_score="start", max_tie_insertions=3)
+    extended = align(query, GERMLINE, extend_equal_score=EqualScoreSide.START, max_tie_insertions=3)
     assert extended.target_begin == 0
     assert extended.cigar.startswith("3M3I")
     assert rescore(extended) == plain.optimal_alignment_score
@@ -113,29 +118,29 @@ def test_max_tie_insertions_limits_inserted_residues():
 
 def test_extension_stops_at_query_start():
     query = CATUMAXOMAB[CATUMAXOMAB.index("EVQLL") :]
-    extended = align(query, GERMLINE, extend_equal_score="start")
+    extended = align(query, GERMLINE, extend_equal_score=EqualScoreSide.START)
     assert (extended.query_begin, extended.target_begin, extended.cigar) == (0, 0, "3M1I95M")
 
     query = CATUMAXOMAB[CATUMAXOMAB.index("VQLL") :]  # without the E there is no tie
-    assert fields(align(query, GERMLINE, extend_equal_score="start")) == fields(align(query, GERMLINE))
+    assert fields(align(query, GERMLINE, extend_equal_score=EqualScoreSide.START)) == fields(align(query, GERMLINE))
 
 
 def test_nothing_to_extend_when_alignment_covers_target_start():
     query = "GGGGS" + GERMLINE
-    assert fields(align(query, GERMLINE, extend_equal_score="both")) == fields(align(query, GERMLINE))
+    assert fields(align(query, GERMLINE, extend_equal_score=EqualScoreSide.BOTH)) == fields(align(query, GERMLINE))
 
 
 @pytest.mark.parametrize("score_size", [0, 1, 2])
 def test_score_sizes(score_size):
     # short enough for 8-bit scores (< 255)
     query, target = CATUMAXOMAB[:45], GERMLINE[:32]
-    extended = align(query, target, extend_equal_score="start", score_size=score_size)
+    extended = align(query, target, extend_equal_score=EqualScoreSide.START, score_size=score_size)
     assert (extended.target_begin, extended.cigar[:4]) == (0, "3M1I")
     assert rescore(extended) == extended.optimal_alignment_score
 
 
 def test_score_only_has_nothing_to_extend():
-    result = align(CATUMAXOMAB, GERMLINE, extend_equal_score="both", score_only=True)
+    result = align(CATUMAXOMAB, GERMLINE, extend_equal_score=EqualScoreSide.BOTH, score_only=True)
     assert result.optimal_alignment_score == 485
     assert result.cigar == ""
 
@@ -173,7 +178,7 @@ def test_random_alignments_keep_score_and_contain_the_original():
         core = GERMLINE[rng.randint(0, 10) : len(GERMLINE) - rng.randint(0, 10)]
         query = flank_start + mutate(core, rng) + flank_end
         plain = align(query, GERMLINE)
-        extended = align(query, GERMLINE, extend_equal_score="both")
+        extended = align(query, GERMLINE, extend_equal_score=EqualScoreSide.BOTH)
 
         assert extended.optimal_alignment_score == plain.optimal_alignment_score
         assert rescore(extended) == extended.optimal_alignment_score
