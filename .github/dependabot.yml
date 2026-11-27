@@ -1,0 +1,13 @@
+# Dependabot updates of production (runtime) dependencies only, version and security updates alike.
+# Development dependencies (pytest, python-semantic-release, ...) are not updated.
+version: 2
+updates:
+  - package-ecosystem: "uv"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    allow:
+      - dependency-type: "production"
+    commit-message:
+      prefix: "build"
+      include: "scope"
