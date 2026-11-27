@@ -119,6 +119,27 @@ s_align* ssw_align (const s_profile* prof,
                     const int32_t filterd,
                     const int32_t maskLen);
 
+/*! @function   Extend the ends of the alignment returned by ssw_align by equal-score paths (not part of the original SSW
+                library, see docs/equal_score_extension.md).
+    @param  prof    the query profile used for ssw_align
+    @param  ref, refLen, weight_gapO, weight_gapE   the same as for ssw_align
+    @param  r   alignment returned by ssw_align, with the beginning positions and cigar; updated in place (score1 does not
+                change)
+    @param  sides   bit 1: extend the beginning, bit 2: extend the end
+    @param  max_insertions  maximum number of read residues the extension may have beyond the ref residues it covers
+    @note   On each side, the extension covers at most the ref residues outside the alignment (plus max_insertions read
+            residues), adds exactly 0 to the score, and ends with a match. The one covering most ref residues, then fewest
+            read residues, is taken. Nothing is done when r has no cigar.
+*/
+void ssw_extend_ties (const s_profile* prof,
+                      const int8_t* ref,
+                      int32_t refLen,
+                      const uint8_t weight_gapO,
+                      const uint8_t weight_gapE,
+                      s_align* r,
+                      const uint8_t sides,
+                      const int32_t max_insertions);
+
 /*! @function   Release the memory allocated by function ssw_align.
     @param  a   pointer to the alignment result structure
 */

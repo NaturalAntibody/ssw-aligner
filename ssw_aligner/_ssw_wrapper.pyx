@@ -46,6 +46,17 @@ cdef extern from "_lib/ssw.h":
 
     cdef void align_destroy(s_align* a)
 
+    cdef void ssw_extend_ties(const s_profile* prof,
+                              const cnp.int8_t* ref,
+                              cnp.int32_t refLen,
+                              const cnp.uint8_t weight_gapO,
+                              const cnp.uint8_t weight_gapE,
+                              s_align* r,
+                              const cnp.uint8_t sides,
+                              const cnp.int32_t max_insertions)
+
+_EXTEND_EQUAL_SCORE_SIDES = {None: 0, "start": 1, "end": 2, "both": 3}
+
 np_aa_table = np.array([
     23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23,
     23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23,
@@ -497,6 +508,16 @@ cdef class StripedSmithWaterman:
         If True, all inidices will start at 0. If False, all inidices will
         start at 1.
         Default is True.
+    extend_equal_score : {None, "start", "end", "both"}, optional
+        Extend the start and/or the end of the optimal alignment by the
+        farthest path that adds exactly 0 to the score (SSW otherwise reports
+        the shortest of equal-score alignments). The extension covers at most
+        the target residues outside the alignment, plus `max_tie_insertions`
+        query residues. See docs/equal_score_extension.md.
+        Default is None (no extension).
+    max_tie_insertions : int, optional
+        Maximum number of query residues an extension may have beyond the
+        target residues it covers. Default is 2.
 
     Notes
     -----
@@ -528,6 +549,8 @@ cdef class StripedSmithWaterman:
     cdef cnp.uint16_t score_filter
     cdef cnp.int32_t distance_filter
     cdef cnp.int32_t mask_length
+    cdef cnp.uint8_t extend_sides
+    cdef cnp.int32_t max_tie_insertions
     cdef str read_sequence
     cdef int index_starts_at
     cdef bool is_protein
@@ -550,7 +573,9 @@ cdef class StripedSmithWaterman:
                   mismatch_score=-3,  # BLASTN Default
                   substitution_matrix=None,
                   suppress_sequences=False,
-                  zero_index=True):
+                  zero_index=True,
+                  extend_equal_score=None,
+                  max_tie_insertions=2):
         # initialize our values
         self.read_sequence = query_sequence
         if gap_open_penalty <= 0:
@@ -563,6 +588,13 @@ cdef class StripedSmithWaterman:
             distance_filter
         self.score_filter = 0 if score_filter is None else score_filter
         self.suppress_sequences = suppress_sequences
+        if extend_equal_score not in _EXTEND_EQUAL_SCORE_SIDES:
+            raise ValueError("`extend_equal_score` must be one of "
+                             f"{list(_EXTEND_EQUAL_SCORE_SIDES)}")
+        self.extend_sides = _EXTEND_EQUAL_SCORE_SIDES[extend_equal_score]
+        if max_tie_insertions < 0:
+            raise ValueError("`max_tie_insertions` must be >= 0")
+        self.max_tie_insertions = max_tie_insertions
         self.is_protein = protein
         self.bit_flag = self._get_bit_flag(override_skip_babp, score_only)
         # http://www.cs.utexas.edu/users/EWD/transcriptions/EWD08xx/EWD831.html
@@ -635,6 +667,11 @@ cdef class StripedSmithWaterman:
                           self.gap_extend_penalty, self.bit_flag,
                           self.score_filter, self.distance_filter,
                           self.mask_length)
+        if self.extend_sides and align is not NULL:
+            ssw_extend_ties(self.profile, <cnp.int8_t*> reference.data,
+                            ref_length, self.gap_open_penalty,
+                            self.gap_extend_penalty, align,
+                            self.extend_sides, self.max_tie_insertions)
 
         # Cython won't let me do this correctly, so duplicate code ahoy:
         if self.suppress_sequences:
