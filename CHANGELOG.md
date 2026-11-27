@@ -2,6 +2,17 @@
 
 <!-- version list -->
 
+## v1.1.0 (2026-11-27)
+
+### Features
+
+- Extend alignment ends by equal-score paths (extend_equal_score)
+  ([`7f57231`](https://github.com/NaturalAntibody/ssw-aligner/commit/7f57231b10ce7a389702cc760f5b5e84c10a493b))
+
+- Use None (not "none") for no equal-score extension, document NGS results
+  ([`c6b704f`](https://github.com/NaturalAntibody/ssw-aligner/commit/c6b704ffb223c6d3dca7ab6692c2a719fcce3529))
+
+
 ## v1.0.1 (2026-11-19)
 
 ### Continuous Integration
