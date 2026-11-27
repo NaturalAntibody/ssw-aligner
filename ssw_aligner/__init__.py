@@ -23,7 +23,7 @@ __all__ = [
 	"ProteinAligner",
 	"StripedSmithWaterman",
 ]
-__version__ = "1.1.0"
+__version__ = "1.2.0"
 
 
 def __getattr__(name: str) -> Any:

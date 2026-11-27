@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.2.0 (2026-11-27)
+
+### Features
+
+- Add EqualScoreSide enum for extend_equal_score
+  ([`85004c1`](https://github.com/NaturalAntibody/ssw-aligner/commit/85004c13d165c5f91769b3c9493ba82f4e71ec29))
+
+
 ## v1.1.0 (2026-11-27)
 
 ### Features
