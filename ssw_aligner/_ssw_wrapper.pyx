@@ -55,7 +55,7 @@ cdef extern from "_lib/ssw.h":
                               const cnp.uint8_t sides,
                               const cnp.int32_t max_insertions)
 
-_EXTEND_EQUAL_SCORE_SIDES = {"none": 0, "start": 1, "end": 2, "both": 3}
+_EXTEND_EQUAL_SCORE_SIDES = {None: 0, "start": 1, "end": 2, "both": 3}
 
 np_aa_table = np.array([
     23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23,
@@ -508,13 +508,13 @@ cdef class StripedSmithWaterman:
         If True, all inidices will start at 0. If False, all inidices will
         start at 1.
         Default is True.
-    extend_equal_score : {"none", "start", "end", "both"}, optional
+    extend_equal_score : {None, "start", "end", "both"}, optional
         Extend the start and/or the end of the optimal alignment by the
         farthest path that adds exactly 0 to the score (SSW otherwise reports
         the shortest of equal-score alignments). The extension covers at most
         the target residues outside the alignment, plus `max_tie_insertions`
         query residues. See docs/equal_score_extension.md.
-        Default is "none".
+        Default is None (no extension).
     max_tie_insertions : int, optional
         Maximum number of query residues an extension may have beyond the
         target residues it covers. Default is 2.
@@ -574,7 +574,7 @@ cdef class StripedSmithWaterman:
                   substitution_matrix=None,
                   suppress_sequences=False,
                   zero_index=True,
-                  extend_equal_score="none",
+                  extend_equal_score=None,
                   max_tie_insertions=2):
         # initialize our values
         self.read_sequence = query_sequence

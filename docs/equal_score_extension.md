@@ -80,8 +80,8 @@ version of the same).
 
 ### Python API
 
-`StripedSmithWaterman(..., extend_equal_score="none" | "start" | "end" | "both", max_tie_insertions=2)`.
-Default `"none"`: outputs identical to the previous version (`tests/test_regression.py` unchanged).
+`StripedSmithWaterman(..., extend_equal_score=None | "start" | "end" | "both", max_tie_insertions=2)`.
+Default `None`: outputs identical to the previous version (`tests/test_regression.py` unchanged).
 
 ### Noise
 
@@ -124,28 +124,83 @@ measurable difference.
 
 All 2,256 therapeutics (2,438 domains), extension off vs on (V `"start"`, J `"end"`):
 
-- 65 domains have a different V or J alignment: 47 V starts (germline start 2→1, 3→1, 4→3, 4→2, 4→1, 10→9), 16 J
-  ends (one more germline residue). Scores unchanged.
+- 63 V or J alignments change: 47 V starts (germline start 2→1, 3→1, 4→3, 4→2, 4→1, 10→9), 16 J ends (one more
+  germline residue). Scores unchanged. (65 domains in total: the 2 VL domains preceding catumaxomab's and solitomab's
+  VH end one residue earlier.)
 - Numbering (regions, scheme mapping, gene calls, domain boundaries) changes only for catumaxomab and solitomab, the
   same VH: `3M1I95M` from germline position 1, numbered E1 V2 Q3 L3.1 L4 (before: V1 Q2 L3 L4 E5…, with `E` left in
   the preceding VL domain). The other 63 are ungapped extensions RIOT already forced (`force_n/c_terminus_matches`).
 - Only those two used an insertion (1); no extension used 2. No extension took linker residues.
-- RIOT tests pass (7,465).
+- RIOT tests pass.
 
 All 63 changed alignments, tie off vs on: [equal_score_extension_therapeutics.md](equal_score_extension_therapeutics.md).
 
+### NGS sample
+
+Single domain AA numbering (`create_riot_aa`) of 10,000 sequences sampled (seed 0) from RIOT's
+`data/ngs/ngs_sample_clean_aa.fasta`; 9,637 got a V alignment.
+
+- 80 sequences have a different alignment: 58 V starts, 22 J ends. Most V changes are reads starting inside FR1 with
+  one or two residues before the alignment start (germline start 16→15 12×, 14→13 9×, 17→16 6×; 2→1 10×).
+- No extension used an insertion: all are ungapped residue pairs scoring 0 in total.
+- Numbering is unchanged in 79 (residues RIOT already forced). One sequence changes, see below.
+- Runtime, 2,500 sequences: 7.27 s off vs 7.29 s on (+0.3%, noise).
+
+### Side effect: alignment length filters
+
+The extension happens before RIOT filters the alignments, so a filter on the alignment's germline length
+(`t_end - t_start`) sees the extended alignment. One sequence of the NGS sample, a broken read (stop codon at
+position 23, no J motif in frame), gets a J only with the extension:
+
+```
+SRR8365476.30165943  …EDFAVYYYQQYGTSVRTLLARGPGWR, IGKJ3*01 = FTFGPGTKVDIK
+
+Tie off: 3M, germline 4–6, score 19
+query     QQYGTSVRTLLARGPGWR
+germline  -------------GPG--
+match                  |||
+region    ·············JJJ··
+                         ^ SW J end (91, germline position 6 of 12, 3M)
+
+Tie on: 5M, germline 4–8, score 19
+query     QQYGTSVRTLLARGPGWR
+germline  -------------GPGTK
+match                  |||..
+region    ·············JJJJJ
+                           ^ SW J end (93, germline position 8 of 12, 5M)
+
+G/G +6, P/P +7, G/G +6 = 19, then W/T -2, R/K +2 = 19 (the end of the read)
+```
+
+| | Tie off | Tie on |
+|---|---|---|
+| J germline length (RIOT minimum: 5) | 3, filtered out | 5, kept |
+| E-value (RIOT maximum: 0.3) | 0.252 | 0.252 |
+| `j_call` | none | `IGKJ3*01` |
+| CDR3 / FR4 | `QQYGTS` / none | `QQYGTSVRTLLA` / `RGPGWR` |
+
+Had the 3-residue alignment passed, RIOT's forced C-terminal extension would have numbered the same residues
+(`WR` onto `TK`): the extension doesn't change the numbering of an accepted alignment, only whether this one is accepted.
+
+Decision: not a problem, kept as is. It is a borderline J of a broken read (the e-value threshold of J, 0.3, is very
+lenient), 1 sequence in 10,000. Filtering on the alignment before the extension would need the pre-extension positions
+from ssw-aligner, not worth it for now.
+
 ## Plan
 
-Status: 1–4 implemented (`feat/extend_equal_score`, RIOT `multidomain_alignement`, uncommitted). RIOT needs the
-released version (the old one rejects the new keyword arguments).
+Status: 1–4 implemented. ssw-aligner: branch `feat/extend_equal_score`. RIOT: branch `multidomain_alignement`
+(uncommitted); it needs the released version for amino acid numbering with `extend_alignment` (the old one rejects
+the new keyword argument).
 
 1. `ssw.c`/`ssw.h`: `ssw_extend_ties`.
 2. Wrapper (`_ssw_wrapper.pyx`, `.pyi`): `extend_equal_score`, `max_tie_insertions`. Tests: catumaxomab-like start
    case (`3M1I…`), the same at the end, a -1 extension not taken, no tie → identical result, `max_tie_insertions=0`
    blocks the catumaxomab case, 3 insertions blocked at the default 2, stops at sequence edges, both `score_size`
    paths (8 and 16 bit). Release as `feat:` (minor bump).
-3. RIOT: AA only. `"start"` for V, `"end"` for J; C genes undecided. NT off until measured (small integer DNA scores
-   make zero-sum extensions much more frequent). `force_n/c_terminus_matches` stay, they just force less.
+3. RIOT: amino acid numbering (`RiotNumberingAA`, `MultidomainRiotNumberingAA`) with `extend_alignment` only:
+   `"start"` for V, `"end"` for J, C not extended. Without `extend_alignment` alignments are plain Smith-Waterman, as
+   before. Not used for nucleotide numbering for now (small integer DNA scores make zero-sum extensions much more
+   frequent). `force_n/c_terminus_matches` stay, they just force less.
 4. Evaluation on RIOT's therapeutics: every alignment whose begin/end/CIGAR changes (per side), added insertions taking
    `G`/`S` linker residues or crossing domain boundaries, catumaxomab → E1 V2 Q3 L3.1 L4, how many extensions use 1 or
    2 insertions, runtime (target < 5% total).

@@ -51,7 +51,7 @@ def rescore(result, gap_open=11, gap_extend=1):
 
 
 def test_default_is_unchanged():
-    assert fields(align(CATUMAXOMAB, GERMLINE)) == fields(align(CATUMAXOMAB, GERMLINE, extend_equal_score="none"))
+    assert fields(align(CATUMAXOMAB, GERMLINE)) == fields(align(CATUMAXOMAB, GERMLINE, extend_equal_score=None))
 
 
 def test_start_tie_is_extended():
@@ -143,6 +143,8 @@ def test_score_only_has_nothing_to_extend():
 def test_invalid_parameters():
     with pytest.raises(ValueError):
         StripedSmithWaterman(CATUMAXOMAB, extend_equal_score="n", **AA_ALIGNER_PARAMS)
+    with pytest.raises(ValueError):
+        StripedSmithWaterman(CATUMAXOMAB, extend_equal_score="none", **AA_ALIGNER_PARAMS)
     with pytest.raises(ValueError):
         StripedSmithWaterman(CATUMAXOMAB, max_tie_insertions=-1, **AA_ALIGNER_PARAMS)
 

@@ -38,7 +38,7 @@ class StripedSmithWaterman:
         mask_length, mask_auto, score_only, score_filter, distance_filter,
         override_skip_babp, protein, match_score, mismatch_score,
         substitution_matrix, suppress_sequences, zero_index, extend_equal_score
-        ("none", "start", "end" or "both") and max_tie_insertions.
+        (None, "start", "end" or "both") and max_tie_insertions.
         """
 
     def __call__(self, target_sequence: str) -> AlignmentStructure: ...
