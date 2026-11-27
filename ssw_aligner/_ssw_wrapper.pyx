@@ -8,6 +8,8 @@
 
 from cpython cimport bool
 import numpy as np
+
+from ssw_aligner.equal_score import EqualScoreSide
 cimport numpy as cnp
 
 cdef extern from "_lib/ssw.h":
@@ -55,7 +57,8 @@ cdef extern from "_lib/ssw.h":
                               const cnp.uint8_t sides,
                               const cnp.int32_t max_insertions)
 
-_EXTEND_EQUAL_SCORE_SIDES = {None: 0, "start": 1, "end": 2, "both": 3}
+# EqualScoreSide is a str enum, so its string values are keys as well.
+_EXTEND_EQUAL_SCORE_SIDES = {None: 0, EqualScoreSide.START: 1, EqualScoreSide.END: 2, EqualScoreSide.BOTH: 3}
 
 np_aa_table = np.array([
     23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23, 23,
@@ -508,12 +511,13 @@ cdef class StripedSmithWaterman:
         If True, all inidices will start at 0. If False, all inidices will
         start at 1.
         Default is True.
-    extend_equal_score : {None, "start", "end", "both"}, optional
+    extend_equal_score : EqualScoreSide or str, optional
         Extend the start and/or the end of the optimal alignment by the
         farthest path that adds exactly 0 to the score (SSW otherwise reports
         the shortest of equal-score alignments). The extension covers at most
         the target residues outside the alignment, plus `max_tie_insertions`
         query residues. See docs/equal_score_extension.md.
+        EqualScoreSide.START / END / BOTH (or "start", "end", "both").
         Default is None (no extension).
     max_tie_insertions : int, optional
         Maximum number of query residues an extension may have beyond the
@@ -589,8 +593,8 @@ cdef class StripedSmithWaterman:
         self.score_filter = 0 if score_filter is None else score_filter
         self.suppress_sequences = suppress_sequences
         if extend_equal_score not in _EXTEND_EQUAL_SCORE_SIDES:
-            raise ValueError("`extend_equal_score` must be one of "
-                             f"{list(_EXTEND_EQUAL_SCORE_SIDES)}")
+            raise ValueError("`extend_equal_score` must be None or an EqualScoreSide "
+                             f"({[side.value for side in EqualScoreSide]})")
         self.extend_sides = _EXTEND_EQUAL_SCORE_SIDES[extend_equal_score]
         if max_tie_insertions < 0:
             raise ValueError("`max_tie_insertions` must be >= 0")

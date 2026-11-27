@@ -6,6 +6,7 @@ from typing import Any
 
 from ssw_aligner._blosum_62 import BLOSUM_62
 from ssw_aligner.aligners import ProteinAligner, NucleotideAligner
+from ssw_aligner.equal_score import EqualScoreSide
 
 _extension_import_error: BaseException | None = None
 
@@ -17,6 +18,7 @@ except ImportError as exc:
 __all__ = [
 	"AlignmentStructure",
 	"BLOSUM_62",
+	"EqualScoreSide",
 	"NucleotideAligner",
 	"ProteinAligner",
 	"StripedSmithWaterman",

@@ -80,7 +80,8 @@ version of the same).
 
 ### Python API
 
-`StripedSmithWaterman(..., extend_equal_score=None | "start" | "end" | "both", max_tie_insertions=2)`.
+`StripedSmithWaterman(..., extend_equal_score=None | EqualScoreSide.START | .END | .BOTH, max_tie_insertions=2)`
+(`EqualScoreSide` is a str enum, the strings `"start"`, `"end"`, `"both"` work as well).
 Default `None`: outputs identical to the previous version (`tests/test_regression.py` unchanged).
 
 ### Noise
