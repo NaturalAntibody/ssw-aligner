@@ -860,3 +860,166 @@ void align_destroy (s_align* a) {
     free(a->cigar);
     free(a);
 }
+
+/* -----------------------------------------------------------------------------------------------------------------
+ * Equal-score extension of the alignment ends. Not part of the original SSW library, see
+ * docs/equal_score_extension.md.
+ * ----------------------------------------------------------------------------------------------------------------- */
+
+#define TIE_NEG_INF (INT32_MIN / 4)
+#define TIE_STACK_INTS 3200 /* DP buffers up to this size (3 matrices of ~ 32 x 32) live on the stack */
+
+/* Extends one side of the alignment by the farthest path that adds exactly 0 to the score.
+   x, y: read and ref position of the first residue outside the alignment; step: -1 for the start, +1 for the end.
+   qn, gn: number of read and ref residues the extension may cover.
+   The path stays in the band i - j <= max_insertions: at no point more than max_insertions read residues beyond the
+   ref residues covered so far.
+   Writes the operations of the extension, outermost first, one per residue (0: M, 1: I, 2: D) into ops (capacity
+   qn + gn), and returns their number (0: no extension, or out of memory). */
+static int32_t extend_side (const int8_t* read,
+                            const int8_t* ref,
+                            const int8_t* mat,
+                            int32_t n,
+                            int32_t x,
+                            int32_t y,
+                            int32_t step,
+                            int32_t qn,
+                            int32_t gn,
+                            int32_t gapO,
+                            int32_t gapE,
+                            int32_t max_insertions,
+                            uint8_t* ops,
+                            int32_t* ext_read,
+                            int32_t* ext_ref) {
+    int32_t w = gn + 1, cells = (qn + 1) * w, need = 3 * cells + w;
+    int32_t stack_buf[TIE_STACK_INTS];
+    int32_t* buf = need <= TIE_STACK_INTS ? stack_buf : (int32_t*)malloc((size_t)need * sizeof(int32_t));
+    int32_t *H, *E, *F, *ref_row, i, j, best_i = 0, best_j = 0, len = 0;
+    if (buf == 0) return 0;
+    H = buf; E = buf + cells; F = buf + 2 * cells; ref_row = buf + 3 * cells;
+    for (j = 1; j <= gn; ++j) ref_row[j] = ref[y + step * (j - 1)] * n; /* offset of the ref residue's row in mat */
+
+    /* Gotoh without the zero floor: every path starts at the alignment edge (0, 0). */
+    H[0] = 0; E[0] = F[0] = TIE_NEG_INF;
+    for (j = 1; j <= gn; ++j) {
+        E[j] = TIE_NEG_INF;
+        F[j] = H[j] = -gapO - (j - 1) * gapE;
+    }
+    for (i = 1; i <= qn; ++i) {
+        int32_t *Hr = H + i * w, *Er = E + i * w, *Fr = F + i * w;
+        const int32_t *Hp = Hr - w, *Ep = Er - w;
+        const int8_t* col = mat + read[x + step * (i - 1)]; /* mat[ref * n + read] */
+        int32_t j_lo = i - max_insertions > 1 ? i - max_insertions : 1; /* band start */
+        if (i <= max_insertions) { /* column 0: insertions only */
+            Er[0] = Hr[0] = -gapO - (i - 1) * gapE;
+            Fr[0] = TIE_NEG_INF;
+        } else { /* the cell left of the band */
+            Hr[j_lo - 1] = Er[j_lo - 1] = Fr[j_lo - 1] = TIE_NEG_INF;
+        }
+        for (j = j_lo; j <= gn; ++j) {
+            int32_t e = Hp[j] - gapO, e2 = Ep[j] - gapE;
+            int32_t f = Hr[j - 1] - gapO, f2 = Fr[j - 1] - gapE;
+            int32_t d = Hp[j - 1] + col[ref_row[j]], h;
+            e = e > e2 ? e : e2;
+            f = f > f2 ? f : f2;
+            Er[j] = e;
+            Fr[j] = f;
+            h = d >= e ? d : e;
+            h = h >= f ? h : f;
+            Hr[j] = h;
+            /* Candidate: score 0, ends with a match. Most ref residues first; rows go up, so the first cell found for a
+               column has the fewest read residues. */
+            if (h == 0 && d == 0 && j > best_j) {
+                best_i = i;
+                best_j = j;
+            }
+        }
+    }
+
+    if (best_j > 0) {
+        int32_t state = 0; /* 0: H, 1: E (insertion, I), 2: F (deletion, D) */
+        i = best_i;
+        j = best_j;
+        while (i > 0 || j > 0) {
+            int32_t k = i * w + j;
+            if (state == 0) {
+                if (i > 0 && j > 0 && H[k] == H[k - w - 1] + mat[ref_row[j] + read[x + step * (i - 1)]]) {
+                    ops[len++] = 0;
+                    --i;
+                    --j;
+                    continue;
+                }
+                state = (i > 0 && H[k] == E[k]) ? 1 : 2;
+            }
+            if (state == 1) {
+                ops[len++] = 1;
+                state = E[k] == H[k - w] - gapO ? 0 : 1;
+                --i;
+            } else {
+                ops[len++] = 2;
+                state = F[k] == H[k - 1] - gapO ? 0 : 2;
+                --j;
+            }
+        }
+        *ext_read = best_i;
+        *ext_ref = best_j;
+    }
+    if (buf != stack_buf) free(buf);
+    return len;
+}
+
+static void cigar_push (uint32_t* c, int32_t* len, uint32_t op, uint32_t count) {
+    if (*len > 0 && (c[*len - 1] & 0xf) == op) c[*len - 1] += count << 4;
+    else c[(*len)++] = count << 4 | op;
+}
+
+void ssw_extend_ties (const s_profile* prof,
+                      const int8_t* ref,
+                      int32_t refLen,
+                      const uint8_t weight_gapO,
+                      const uint8_t weight_gapE,
+                      s_align* r,
+                      const uint8_t sides,
+                      const int32_t max_insertions) {
+    uint8_t stack_ops[2][256];
+    uint8_t* ops[2] = {stack_ops[0], stack_ops[1]};
+    int32_t n_ops[2] = {0, 0}, ext_read[2] = {0, 0}, ext_ref[2] = {0, 0}, side, k, len = 0;
+    uint32_t* c;
+
+    if (r == 0 || r->cigar == 0 || r->cigarLen == 0 || r->read_begin1 < 0 || r->ref_begin1 < 0) return;
+
+    for (side = 0; side < 2; ++side) {
+        int32_t start = side == 0, qn, gn, x, y;
+        if (!(sides & (start ? 1 : 2))) continue;
+        gn = start ? r->ref_begin1 : refLen - 1 - r->ref_end1;
+        qn = start ? r->read_begin1 : prof->readLen - 1 - r->read_end1;
+        if (qn > gn + max_insertions) qn = gn + max_insertions;
+        if (gn <= 0 || qn <= 0) continue;
+        if (qn + gn > 256) {
+            ops[side] = (uint8_t*)malloc(qn + gn);
+            if (ops[side] == 0) continue;
+        }
+        x = start ? r->read_begin1 - 1 : r->read_end1 + 1;
+        y = start ? r->ref_begin1 - 1 : r->ref_end1 + 1;
+        n_ops[side] = extend_side(prof->read, ref, prof->mat, prof->n, x, y, start ? -1 : 1, qn, gn, weight_gapO,
+                                  weight_gapE, max_insertions, ops[side], &ext_read[side], &ext_ref[side]);
+    }
+
+    if (n_ops[0] + n_ops[1] > 0) {
+        c = (uint32_t*)malloc((r->cigarLen + n_ops[0] + n_ops[1]) * sizeof(uint32_t));
+        if (c != 0) {
+            for (k = 0; k < n_ops[0]; ++k) cigar_push(c, &len, ops[0][k], 1);  /* start: outermost is leftmost */
+            for (k = 0; k < r->cigarLen; ++k) cigar_push(c, &len, r->cigar[k] & 0xf, r->cigar[k] >> 4);
+            for (k = n_ops[1] - 1; k >= 0; --k) cigar_push(c, &len, ops[1][k], 1);  /* end: outermost is rightmost */
+            free(r->cigar);
+            r->cigar = c;
+            r->cigarLen = len;
+            r->read_begin1 -= ext_read[0];
+            r->ref_begin1 -= ext_ref[0];
+            r->read_end1 += ext_read[1];
+            r->ref_end1 += ext_ref[1];
+        }
+    }
+    for (side = 0; side < 2; ++side)
+        if (ops[side] != stack_ops[side]) free(ops[side]);
+}

@@ -47,6 +47,22 @@ result = aligner(target_sequence="ARNDCQEGHILKMFPSTWYV")
 print(result["optimal_alignment_score"])
 ```
 
+## Equal-score extension
+
+Of several optimal alignments with the same score, SSW reports the shortest one. With
+`extend_equal_score` (`"start"`, `"end"` or `"both"`, default `"none"`), the reported alignment is
+extended towards the target start and/or end by the farthest path that adds exactly 0 to the score,
+with at most `max_tie_insertions` (default 2) query residues beyond the target residues it covers.
+Not part of scikit-bio; see [docs/equal_score_extension.md](docs/equal_score_extension.md).
+
+```python
+from ssw_aligner import ProteinAligner
+
+aligner = ProteinAligner("GGGGSEVQLLEQSGAELVRPG", extend_equal_score="start")
+result = aligner("QVQLQQSGAELVRPG")
+print(result["cigar"])  # 3M1I12M from the target start (without the extension: 12M from position 4)
+```
+
 ## RIOT-compatible wrappers
 
 These wrappers use the same defaults as RIOT while leaving
